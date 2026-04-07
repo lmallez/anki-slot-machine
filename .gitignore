@@ -1,0 +1,8 @@
+.DS_Store
+.idea/
+.test_addons/
+.venv/
+__pycache__/
+*.pyc
+dist/
+src/anki_slot_machine/user_files/

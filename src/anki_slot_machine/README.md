@@ -80,7 +80,7 @@ They are there to make you feel alive.
 
 ## ⚙️ Config
 
-Main config lives in `src/anki_slot_machine/config.json`.
+Example:
 
 ```json
 {
@@ -100,14 +100,14 @@ Main config lives in `src/anki_slot_machine/config.json`.
 }
 ```
 
-Useful intuition:
+---
+
+## 🧪 Tuning knobs
 
 - `rarity_exponent` → how unfair life is  
 - `pair_scale_multiplier` → how much small wins matter  
 - `triple_scale_multiplier` → how hard jackpots slap  
 - `expected_multiplier_target` → how fast you inflate your ego  
-
-More detail is documented in `src/anki_slot_machine/config.md`.
 
 ---
 
@@ -121,11 +121,6 @@ Includes:
 - actual multipliers  
 - expected value  
 
-The add-on menu also includes:
-
-- `Show Stats`
-- `Reset Balance and Stats`
-
 ---
 
 ## 💾 Persistence
@@ -134,9 +129,6 @@ Your fake wealth is stored locally.
 
 Yes, it survives restarts.  
 No, you cannot cash it out.  
-
-Runtime state is stored separately from Anki card data, so the add-on does not
-modify scheduling, note fields, or card content.
 
 ---
 
@@ -150,25 +142,10 @@ But it might make you review more cards.
 
 ---
 
-## Repo Structure
+## 🏁 Final note
 
-The repo uses a lightweight `src/<package>` layout:
+If you ever find yourself thinking:
 
-- `src/anki_slot_machine/addon.py` registers the add-on once
-- `src/anki_slot_machine/reviewer.py` wires Anki reviewer hooks and the JS bridge
-- `src/anki_slot_machine/service.py` coordinates config, state, and review application
-- `src/anki_slot_machine/game.py` contains slot and payout logic
-- `src/anki_slot_machine/config.py` derives the slot solver tables
-- `src/anki_slot_machine/state.py` owns local persistence
-- `src/anki_slot_machine/ui/` contains Qt dialogs
-- `src/anki_slot_machine/web/` contains reviewer CSS and JavaScript
+"one more card, I can hit the jackpot"
 
-## Development
-
-```bash
-make check
-make test
-make solver
-make build
-make install
-```
+It’s working.

@@ -1,0 +1,416 @@
+:root {
+  --bg: #070707;
+  --machine-red-light: #d05448;
+  --machine-red: #a83531;
+  --machine-red-dark: #6f1d1e;
+  --gold-light: #f4db7b;
+  --gold: #d4a947;
+  --gold-dark: #8f6825;
+  --slot-frame-border: var(--gold-dark);
+  --slot-frame-top-left: var(--gold-light);
+  --slot-frame-bottom-right: var(--gold);
+  --text: #f2f2ed;
+  --win: #5fc86f;
+  --loss: #d35b56;
+  --stone-light: #a3acb5;
+  --stone: #7f8891;
+  --stone-dark: #5c646d;
+  --iron-light: #c8d0d6;
+  --iron: #a6b1ba;
+  --iron-dark: #7f8a93;
+  --gem-gold-light: #f0dc82;
+  --gem-gold: #d8b44d;
+  --gem-gold-dark: #9d7c33;
+  --diamond-light: #b1f6f2;
+  --diamond: #71d7d2;
+  --diamond-dark: #429e9a;
+  --emerald-light: #8fea82;
+  --emerald: #4fc55e;
+  --emerald-dark: #2e8a3d;
+  --outline: #261412;
+  --screen: #121212;
+}
+
+#anki-slot-machine-root {
+  position: fixed;
+  right: 44px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 316px;
+  z-index: 9999;
+  pointer-events: none;
+  font-family: "Courier New", monospace;
+}
+
+.anki-slot-machine-machine {
+  position: relative;
+  width: 100%;
+  padding: 14px 14px 18px;
+  border: 2px solid var(--outline);
+  border-radius: 10px;
+  background: var(--machine-red);
+  image-rendering: pixelated;
+}
+
+.anki-slot-machine-machine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  border-top: 4px solid var(--machine-red-light);
+  border-left: 4px solid var(--machine-red-light);
+  border-right: 4px solid var(--machine-red-dark);
+  border-bottom: 4px solid var(--machine-red-dark);
+  pointer-events: none;
+}
+
+.anki-slot-machine-machine.is-loss {
+  animation: anki-slot-machine-shake 170ms steps(2, end);
+}
+
+.anki-slot-machine-lights {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.anki-slot-machine-light {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--gold-dark);
+  background: var(--gold);
+  box-sizing: border-box;
+  position: relative;
+}
+
+.anki-slot-machine-light::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 4px;
+  height: 4px;
+  background: var(--gold-light);
+}
+
+.anki-slot-machine-balance {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  min-width: 68px;
+  padding: 4px 6px;
+  border: 2px solid var(--gold-dark);
+  background: var(--screen);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1;
+}
+
+.anki-slot-machine-window {
+  position: relative;
+  margin: 32px auto 12px;
+  padding: 10px;
+  width: 248px;
+  border: 2px solid var(--slot-frame-border);
+  background: var(--screen);
+}
+
+.anki-slot-machine-window::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 2px solid var(--slot-frame-top-left);
+  border-left: 2px solid var(--slot-frame-top-left);
+  border-right: 2px solid var(--slot-frame-bottom-right);
+  border-bottom: 2px solid var(--slot-frame-bottom-right);
+  pointer-events: none;
+}
+
+.anki-slot-machine-reels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.anki-slot-machine-reel {
+  height: 182px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #3a2b16;
+  background: #060606;
+  position: relative;
+}
+
+.anki-slot-machine-reel.is-bright {
+  border-color: var(--gold-light);
+  background: #121212;
+}
+
+.anki-slot-machine-reel.is-pair {
+  border-color: var(--gold);
+  background: #101010;
+}
+
+.anki-slot-machine-symbol {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.anki-slot-machine-symbol.is-blank {
+  width: 64px;
+  height: 64px;
+  background: transparent;
+}
+
+.anki-slot-machine-symbol-sprite {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 64px 64px;
+  image-rendering: pixelated;
+  z-index: 2;
+}
+
+.anki-slot-machine-symbol[data-symbol="slot_1"] .anki-slot-machine-symbol-sprite {
+  background-image: url("sprites/slot_1.png");
+}
+
+.anki-slot-machine-symbol[data-symbol="slot_2"] .anki-slot-machine-symbol-sprite {
+  background-image: url("sprites/slot_2.png");
+}
+
+.anki-slot-machine-symbol[data-symbol="slot_3"] .anki-slot-machine-symbol-sprite {
+  background-image: url("sprites/slot_3.png");
+}
+
+.anki-slot-machine-symbol[data-symbol="slot_4"] .anki-slot-machine-symbol-sprite {
+  background-image: url("sprites/slot_4.png");
+}
+
+.anki-slot-machine-symbol[data-symbol="slot_5"] .anki-slot-machine-symbol-sprite {
+  background-image: url("sprites/slot_5.png");
+}
+
+.anki-slot-machine-amount {
+  position: absolute;
+  left: 50%;
+  top: 76px;
+  transform: translateX(-50%);
+  opacity: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.anki-slot-machine-amount.is-visible {
+  animation: anki-slot-machine-float 520ms linear forwards;
+}
+
+.anki-slot-machine-amount.is-win {
+  color: var(--win);
+}
+
+.anki-slot-machine-amount.is-loss {
+  color: var(--loss);
+}
+
+.anki-slot-machine-amount.is-neutral {
+  color: var(--text);
+}
+
+.anki-slot-machine-particles {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 96px;
+  height: 160px;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.anki-slot-machine-breakdown {
+  width: 74%;
+  margin: 0 auto 12px;
+  padding: 10px 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  border: 2px solid var(--slot-frame-border);
+  background: var(--screen);
+  box-sizing: border-box;
+  color: var(--text);
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.anki-slot-machine-breakdown::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 2px solid var(--slot-frame-top-left);
+  border-left: 2px solid var(--slot-frame-top-left);
+  border-right: 2px solid var(--slot-frame-bottom-right);
+  border-bottom: 2px solid var(--slot-frame-bottom-right);
+  pointer-events: none;
+}
+
+.anki-slot-machine-breakdown-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 22px;
+  margin: 0;
+  padding: 0 12px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.anki-slot-machine-breakdown-line:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -4px;
+  height: 2px;
+  background: #3a2b16;
+}
+
+.anki-slot-machine-symbol--inline {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+
+.anki-slot-machine-symbol--inline .anki-slot-machine-symbol-sprite {
+  background-size: 18px 18px;
+}
+
+.anki-slot-machine-multiplier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.anki-slot-machine-multiplier-text {
+  display: inline-block;
+  line-height: 1;
+}
+
+.anki-slot-machine-multiplier-indicator {
+  display: inline-block;
+  line-height: 1;
+  color: var(--slot-frame-bottom-right);
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.anki-slot-machine-breakdown-line.is-total {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.anki-slot-machine-breakdown-line.is-total.is-positive {
+  color: var(--win);
+}
+
+.anki-slot-machine-breakdown-line.is-total.is-negative {
+  color: var(--loss);
+}
+
+.anki-slot-machine-breakdown-line.is-total.is-neutral {
+  color: var(--text);
+}
+
+.anki-slot-machine-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  opacity: 0;
+  animation: anki-slot-machine-particle 420ms linear forwards;
+}
+
+.anki-slot-machine-particle.is-win {
+  background: var(--gold);
+}
+
+.anki-slot-machine-particle.is-loss {
+  background: var(--loss);
+}
+
+@keyframes anki-slot-machine-spin {
+  0% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(-58px);
+  }
+}
+
+@keyframes anki-slot-machine-bounce {
+  0% {
+    transform: translateY(-8px);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+  100% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes anki-slot-machine-float {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-14px);
+  }
+}
+
+@keyframes anki-slot-machine-particle {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+
+@keyframes anki-slot-machine-shake {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(2px, 0); }
+  50% { transform: translate(-2px, 0); }
+  75% { transform: translate(2px, 0); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (max-width: 480px) {
+  #anki-slot-machine-root {
+    width: 320px;
+  }
+
+  .anki-slot-machine-window {
+    width: 260px;
+  }
+}
