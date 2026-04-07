@@ -96,7 +96,7 @@ class SlotMachineService:
             state.biggest_jackpot = max(state.biggest_jackpot, result.payout)
         elif result.answer_key == "again":
             state.total_lost = quantize_decimal(
-                state.total_lost + bet,
+                state.total_lost + abs(result.net_change),
                 config.decimal_places,
             )
             state.current_streak = 0

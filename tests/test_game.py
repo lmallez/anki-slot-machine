@@ -205,25 +205,52 @@ class RewardTests(unittest.TestCase):
         config = make_config()
         self.assertEqual(game_module.neutral_reels(config), ("SLOT_1", "SLOT_2", "SLOT_3"))
 
-    def test_spin_result_for_again_is_a_loss(self) -> None:
+    def test_spin_result_for_again_spins_and_uses_loss_multiplier(self) -> None:
         config = make_config()
-        result = game_module.build_spin_result(
-            config,
-            card_id=42,
-            answer_key="again",
-            bet=Decimal("1.00"),
-            balance_before=Decimal("100.00"),
-            rng=random.Random(2),
-        )
+        with patch.object(
+            game_module,
+            "spin_reels",
+            return_value=("SLOT_2", "SLOT_5", "SLOT_2"),
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="again",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("100.00"),
+                rng=random.Random(2),
+            )
         self.assertFalse(result.is_win)
-        self.assertEqual(result.net_change, Decimal("-1.00"))
-        self.assertEqual(result.balance_after, Decimal("99.00"))
-        self.assertEqual(result.reels, ("MISS", "MISS", "MISS"))
-        self.assertFalse(result.animation_enabled)
-        self.assertFalse(result.did_spin)
-        self.assertEqual(result.base_reward, Decimal("0"))
-        self.assertEqual(result.slot_bonus, Decimal("0"))
-        self.assertIsNone(result.matched_symbol)
+        self.assertTrue(result.did_spin)
+        self.assertTrue(result.animation_enabled)
+        self.assertEqual(result.reels, ("SLOT_2", "SLOT_5", "SLOT_2"))
+        self.assertEqual(result.base_reward, Decimal("1.00"))
+        self.assertEqual(result.matched_symbol, "SLOT_2")
+        self.assertEqual(
+            result.slot_multiplier,
+            config.slot_double_multipliers["SLOT_2"],
+        )
+        self.assertEqual(result.net_change, -result.payout)
+        self.assertEqual(result.balance_after, Decimal("100.00") - result.payout)
+
+    def test_spin_result_for_again_cannot_take_balance_below_zero(self) -> None:
+        config = make_config()
+        with patch.object(
+            game_module,
+            "spin_reels",
+            return_value=("SLOT_4", "SLOT_4", "SLOT_4"),
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="again",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("1.50"),
+                rng=random.Random(2),
+            )
+        self.assertEqual(result.payout, Decimal("1.50"))
+        self.assertEqual(result.net_change, Decimal("-1.50"))
+        self.assertEqual(result.balance_after, Decimal("0.00"))
 
     def test_spin_result_for_hard_is_neutral(self) -> None:
         config = make_config()

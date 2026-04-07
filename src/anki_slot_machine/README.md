@@ -36,7 +36,7 @@ Every review becomes a gamble.
 
 - You answer your card
 - The slot resolves
-- You win fake money, win nothing, or lose `$1`
+- You win fake money, win nothing, or burn money on `Again`
 - You feel something
 
 That’s it. That’s the product.
@@ -45,8 +45,8 @@ That’s it. That’s the product.
 
 ## 💸 Rules (very serious business)
 
-- **Again** → you lose `$1`  
-  → skill issue
+- **Again** → the slot runs and removes money instead of adding it  
+  → same machine, bad outcome
 
 - **Hard** → you earn `$0`  
   → safe, boring, respectable

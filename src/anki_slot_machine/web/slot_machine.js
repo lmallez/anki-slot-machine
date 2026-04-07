@@ -156,7 +156,16 @@
     clearRevealTimeouts();
 
     if (result.did_spin && result.animation_enabled) {
-      if (result.line_hit) {
+      if (result.answer_key === "again") {
+        revealSpinResult(result, { highlight: result.line_hit });
+        if (Number.parseFloat(String(result.payout || 0)) > 0) {
+          flashLoss();
+          burstParticles("loss");
+          showAmount(`-$${result.payout}`, "loss");
+        } else {
+          showAmount(`$${result.payout || 0}`, "neutral");
+        }
+      } else if (result.line_hit) {
         revealSpinResult(result, { highlight: true });
         burstParticles("win");
         showAmount(`+$${result.payout}`, "win");
@@ -203,7 +212,7 @@
   function renderStaticResult(result) {
     const reels = root.querySelectorAll("[data-slot-reel]");
     clearRevealTimeouts();
-    if (!result || result.answer_key === "again" || result.answer_key === "hard") {
+    if (!result || result.answer_key === "hard") {
       clearReels();
       return;
     }
@@ -237,10 +246,25 @@
     }
 
     if (result.answer_key === "again") {
-      baseNode.textContent = `-$${defaultMoney}`;
-      bonusNode.textContent = "no spin";
-      totalNode.className = "anki-slot-machine-breakdown-line is-total is-negative";
-      totalNode.textContent = `= -$${defaultMoney}`;
+      baseNode.textContent = `-$${result.base_reward || defaultMoney}`;
+      if (result.did_spin && result.matched_symbol) {
+        const symbolName = String(result.matched_symbol).toLowerCase();
+        const faceCountLabel = result.line_hit ? "3 faces" : "2 faces";
+        bonusNode.innerHTML = `
+          <span class="anki-slot-machine-multiplier">
+            ${symbolMarkup(symbolName)}
+            <span class="anki-slot-machine-multiplier-indicator">${faceCountLabel}</span>
+            <span class="anki-slot-machine-multiplier-text">x ${result.slot_multiplier || 0}</span>
+          </span>
+        `;
+      } else {
+        bonusNode.textContent = `x ${result.slot_multiplier || 0}`;
+      }
+      totalNode.className =
+        Number.parseFloat(String(result.payout || 0)) === 0
+          ? "anki-slot-machine-breakdown-line is-total is-neutral"
+          : "anki-slot-machine-breakdown-line is-total is-negative";
+      totalNode.textContent = `= -$${result.payout || 0}`;
       return;
     }
 

@@ -210,7 +210,7 @@ def build_spin_result(
     balance_before: Decimal,
     rng: random.Random,
 ) -> SpinResult:
-    did_spin = answer_key in {"good", "easy"}
+    did_spin = answer_key in {"again", "good", "easy"}
     reels = ("MISS", "MISS", "MISS")
     slot_multiplier = ZERO
     payout = Decimal("0")
@@ -221,8 +221,39 @@ def build_spin_result(
     match_count = 0
 
     if answer_key == "again":
-        net_change = quantize_decimal(-bet, config.decimal_places)
-        headline = f"{ANSWER_LABELS[answer_key]} loses ${format_decimal(bet, config.decimal_places)}"
+        base_reward = quantize_decimal(bet, config.decimal_places)
+        reels = spin_reels(config, rng=rng)
+        slot_multiplier, matched_symbol, match_count = evaluate_reels(config, reels)
+        line_hit = match_count == 3
+        raw_loss = quantize_decimal(
+            base_reward * slot_multiplier,
+            config.decimal_places,
+        )
+        payout = min(balance_before, raw_loss)
+        payout = quantize_decimal(payout, config.decimal_places)
+        slot_bonus = quantize_decimal(
+            max(ZERO, payout - base_reward),
+            config.decimal_places,
+        )
+        net_change = quantize_decimal(-payout, config.decimal_places)
+        if matched_symbol and match_count == 3:
+            headline = (
+                f"{ANSWER_LABELS[answer_key]} loses "
+                f"${format_decimal(payout, config.decimal_places)} on "
+                f"{_headline_symbol(matched_symbol)} "
+                f"x{format_decimal(slot_multiplier, config.decimal_places)}"
+            )
+        elif matched_symbol and match_count == 2:
+            headline = (
+                f"{ANSWER_LABELS[answer_key]} loses "
+                f"${format_decimal(payout, config.decimal_places)} on a pair of "
+                f"{_headline_symbol(matched_symbol)}"
+            )
+        else:
+            headline = (
+                f"{ANSWER_LABELS[answer_key]} loses "
+                f"${format_decimal(payout, config.decimal_places)}"
+            )
         is_win = False
     else:
         if answer_key == "hard":

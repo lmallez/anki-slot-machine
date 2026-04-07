@@ -48,7 +48,7 @@ The profile file is the source of truth for the slot:
 
 ## Reward rules
 
-- `Again`: lose `$1`.
+- `Again`: spin the slot and lose `$1 x multiplier`, clamped so the balance never goes below zero.
 - `Hard`: earn `$0` with no spin.
 - `Good`: spin the slot and earn `$1 x multiplier`.
 - `Easy`: spin the slot and earn `$2 x multiplier`.

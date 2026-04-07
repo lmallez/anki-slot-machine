@@ -123,14 +123,18 @@ class ServiceTests(unittest.TestCase):
     def test_loss_updates_balance_and_stats_without_touching_card_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
-            result = service.apply_review(card_id=55, ease=1, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_2", "SLOT_5", "SLOT_2"),
+            ):
+                result = service.apply_review(card_id=55, ease=1, button_count=4)
             snapshot = service.stats_snapshot()
 
         self.assertEqual(result.card_id, 55)
         self.assertEqual(result.answer_key, "again")
-        self.assertEqual(snapshot["balance"], "99.00")
-        self.assertEqual(snapshot["total_lost"], "1.00")
-        self.assertEqual(snapshot["spins"], 0)
+        self.assertEqual(snapshot["balance"], result.to_dict(2)["balance_after"])
+        self.assertEqual(snapshot["total_lost"], result.to_dict(2)["payout"])
+        self.assertEqual(snapshot["spins"], 1)
 
     def test_hard_is_neutral_and_does_not_spin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -221,11 +225,16 @@ class ServiceTests(unittest.TestCase):
                 make_config(starting_balance=2),
                 Path(tmp_dir) / "state.json",
             )
-            result = service.apply_review(card_id=3, ease=1, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+            ):
+                result = service.apply_review(card_id=3, ease=1, button_count=4)
             snapshot = service.snapshot()
 
-        self.assertEqual(result.net_change, Decimal("-1.00"))
-        self.assertEqual(snapshot["balance"], "1.00")
+        self.assertEqual(result.base_reward, Decimal("1.00"))
+        self.assertEqual(result.balance_after, Decimal("0.00"))
+        self.assertEqual(snapshot["balance"], "0.00")
 
 
 if __name__ == "__main__":
