@@ -1,0 +1,24 @@
+{
+  "name": "liberty_bell",
+  "faces": {
+    "SLOT_1": 35,
+    "SLOT_2": 25,
+    "SLOT_3": 20,
+    "SLOT_4": 12,
+    "SLOT_5": 8
+  },
+  "pair_multipliers": {
+    "SLOT_1": 0.0,
+    "SLOT_2": 0.0,
+    "SLOT_3": 0.0,
+    "SLOT_4": 0.0,
+    "SLOT_5": 0.0
+  },
+  "triple_multipliers": {
+    "SLOT_1": 2.0,
+    "SLOT_2": 4.0,
+    "SLOT_3": 8.0,
+    "SLOT_4": 20.0,
+    "SLOT_5": 80.0
+  }
+}

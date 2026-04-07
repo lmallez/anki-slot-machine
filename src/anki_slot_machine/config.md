@@ -6,15 +6,45 @@ changes Anki scheduling, intervals, or note data.
 ## Config keys
 
 - `starting_balance`: first balance for a fresh profile state file.
-- `expected_multiplier_target`: target average slot multiplier over many spins.
 - `decimal_places`: how many decimals are used for balances, payouts, and
-  derived multipliers.
-- `rarity_exponent`: how aggressively rarity turns into reward weight. Higher
-  values compress common hits and push more reward into rare ones.
-- `pair_scale_multiplier`: one global strength control for all exact pairs.
-- `triple_scale_multiplier`: how much more strongly triples scale than pairs.
-- `slot_faces`: the only probability input. More faces means a symbol appears
-  more often on each reel.
+  displayed multipliers.
+- `slot_profile_path`: path to the slot profile JSON file, relative to the
+  add-on root unless you provide an absolute path.
+
+## Slot profile format
+
+The profile file is the source of truth for the slot:
+
+```json
+{
+  "name": "base",
+  "faces": {
+    "SLOT_1": 35,
+    "SLOT_2": 25,
+    "SLOT_3": 20,
+    "SLOT_4": 12,
+    "SLOT_5": 8
+  },
+  "pair_multipliers": {
+    "SLOT_1": 0.75,
+    "SLOT_2": 0.95,
+    "SLOT_3": 1.15,
+    "SLOT_4": 2.20,
+    "SLOT_5": 4.50
+  },
+  "triple_multipliers": {
+    "SLOT_1": 2.50,
+    "SLOT_2": 7.00,
+    "SLOT_3": 15.00,
+    "SLOT_4": 60.00,
+    "SLOT_5": 300.00
+  }
+}
+```
+
+- `faces`: how many times each symbol appears on a reel strip.
+- `pair_multipliers`: reward for an exact pair of that symbol.
+- `triple_multipliers`: reward for a triple of that symbol.
 
 ## Reward rules
 
@@ -23,33 +53,28 @@ changes Anki scheduling, intervals, or note data.
 - `Good`: spin the slot and earn `$1 x multiplier`.
 - `Easy`: spin the slot and earn `$2 x multiplier`.
 - A no-match spin uses `x0`.
-- An exact pair uses the derived double multiplier for that symbol.
-- A triple uses the derived triple multiplier for that symbol.
+- An exact pair uses the profile pair multiplier for that symbol.
+- A triple uses the profile triple multiplier for that symbol.
 
-## How the solver works
+## How probabilities work
 
-- Reel probabilities come only from `slot_faces`.
+- The slot is a real 3-reel model with 3 independent draws.
+- Reel probabilities come only from `faces`.
 - For each symbol:
   - `p = faces / total_faces`
-  - `P(double) = 3 * p^2 * (1 - p)`
+  - `P(pair) = 3 * p^2 * (1 - p)`
   - `P(triple) = p^3`
-- Symbol rarity is converted to a score with `(-log(p)) ^ rarity_exponent`.
-- The add-on solves one scale value from the target expected multiplier.
-- Double and triple multipliers are then derived automatically:
-  - `double = 1 + score * a * pair_scale_multiplier`
-  - `triple = 1 + score * a * triple_scale_multiplier`
-- Multipliers are rounded to `decimal_places`, then the achieved EV is
-  recomputed and shown in the odds dialog.
+- The odds dialog computes the expected multiplier from the loaded profile. It
+  does not solve or rebalance anything for you.
 
 ## Odds and rewards page
 
 Tools -> Slot Machine -> Show Odds and Rewards shows:
 
-- target expected multiplier
-- achieved expected multiplier after rounding
-- configured rarity exponent, pair scale, and triple scale
+- the loaded slot profile
+- no-match, pair, and triple rates
 - per-symbol reel probability
-- per-symbol double multiplier
+- per-symbol pair multiplier
 - per-symbol triple multiplier
 - expected `Good` and `Easy` payouts
 

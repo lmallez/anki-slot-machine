@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from .config import SlotMachineConfig, load_config
-from .decimal_utils import ZERO, format_decimal, quantize_decimal
+from .decimal_utils import format_decimal, quantize_decimal
 from .game import SpinResult, answer_key_for_rating, build_spin_result
 from .state import SlotMachineState, StateRepository
 
@@ -57,8 +57,6 @@ class SlotMachineService:
 
         return {
             "balance": format_decimal(state.balance, config.decimal_places),
-            "fixed_bet_amount": format_decimal(REVIEW_BET, config.decimal_places),
-            "default_slot_multiplier": format_decimal(ZERO, config.decimal_places),
             "last_result": state.last_result,
             "card_id": card_id,
             "answer_button_count": answer_button_count,
@@ -69,12 +67,6 @@ class SlotMachineService:
                 else None
             ),
         }
-
-    def set_bet(self, token: str | None) -> dict:
-        return self.snapshot()
-
-    def change_bet(self, delta_token: str | None) -> dict:
-        return self.snapshot()
 
     def apply_review(self, *, card_id: int, ease: int, button_count: int) -> SpinResult:
         config = self.config()

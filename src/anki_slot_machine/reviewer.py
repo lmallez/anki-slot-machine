@@ -47,19 +47,13 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
     if not message.startswith(f"{COMMAND_PREFIX}:"):
         return handled_result
 
-    _, action, *rest = message.split(":")
-    payload = rest[0] if rest else None
-    service = get_service()
+    _, action, *_ = message.split(":")
 
     if action == "refresh":
-        snapshot = service.snapshot(
+        snapshot = get_service().snapshot(
             card_id=_current_card_id(context),
             answer_button_count=_answer_button_count(context),
         )
-    elif action == "set-bet":
-        snapshot = service.set_bet(payload)
-    elif action == "change-bet":
-        snapshot = service.change_bet(payload)
     else:
         return handled_result
 

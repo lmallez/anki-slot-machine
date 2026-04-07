@@ -52,19 +52,25 @@ class ReviewerHookTests(unittest.TestCase):
         result = reviewer.on_webview_did_receive_js_message((False, None), "noop", context)
         self.assertEqual(result, (False, None))
 
-    def test_prefixed_messages_update_the_panel_only(self) -> None:
+    def test_refresh_message_updates_the_panel_only(self) -> None:
         context = self.make_reviewer()
         fake_service = SimpleNamespace(
-            set_bet=Mock(return_value={"balance": "125.00", "fixed_bet_amount": "1.00"}),
+            snapshot=Mock(
+                return_value={
+                    "balance": "125.00",
+                    "card_id": 123,
+                    "answer_button_count": 4,
+                }
+            ),
         )
         with patch.object(reviewer, "get_service", return_value=fake_service):
             handled, payload = reviewer.on_webview_did_receive_js_message(
-                (False, None), "anki-slot-machine:set-bet:5", context
+                (False, None), "anki-slot-machine:refresh", context
             )
 
         self.assertTrue(handled)
         self.assertIsNone(payload)
-        fake_service.set_bet.assert_called_once_with("5")
+        fake_service.snapshot.assert_called_once_with(card_id=123, answer_button_count=4)
         script = context.web.eval.call_args[0][0]
         self.assertIn("syncState", script)
         self.assertIn('"balance": "125.00"', script)
@@ -121,7 +127,7 @@ class ReviewerHookTests(unittest.TestCase):
         context = self.make_reviewer()
         stubs.mw.reviewer = context
         fake_service = SimpleNamespace(
-            snapshot=Mock(return_value={"balance": "99.00", "fixed_bet_amount": "1.00"})
+            snapshot=Mock(return_value={"balance": "99.00"})
         )
 
         with patch.object(reviewer, "get_service", return_value=fake_service):
@@ -130,7 +136,7 @@ class ReviewerHookTests(unittest.TestCase):
         fake_service.snapshot.assert_called_once()
         script = context.web.eval.call_args[0][0]
         payload = script.split("syncState(", 1)[1].rsplit(");", 1)[0]
-        self.assertEqual(json.loads(payload), {"balance": "99.00", "fixed_bet_amount": "1.00"})
+        self.assertEqual(json.loads(payload), {"balance": "99.00"})
 
 
 if __name__ == "__main__":

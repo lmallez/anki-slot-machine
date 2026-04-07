@@ -53,30 +53,16 @@ class SlotMachineOddsDialog(QDialog):
 
         summary_lines = [
             "Real 3-reel slot model",
-            "Probability-driven multiplier solver",
+            f"Loaded profile: {summary.profile_name}",
+            f"Profile file: {summary.profile_path}",
             (
-                "Target expected multiplier: "
-                f"{format_decimal(summary.target_expected_multiplier, config.decimal_places)}x"
-            ),
-            (
-                "Achieved expected multiplier: "
-                f"{format_decimal(summary.achieved_expected_multiplier, config.decimal_places)}x"
-            ),
-            (
-                "Rarity exponent: "
-                f"{format_decimal(summary.rarity_exponent, config.decimal_places)}"
-            ),
-            (
-                "Pair scale multiplier: "
-                f"{format_decimal(summary.pair_scale_multiplier, config.decimal_places)}x"
-            ),
-            (
-                "Triple scale multiplier: "
-                f"{format_decimal(summary.triple_scale_multiplier, config.decimal_places)}x"
+                "Expected multiplier per spin: "
+                f"{format_decimal(summary.expected_multiplier, config.decimal_places)}x"
             ),
             f"No-match probability: {_percent(summary.no_match_probability)}",
             f"Any pair probability: {_percent(summary.total_double_probability)}",
             f"Any triple probability: {_percent(summary.total_triple_probability)}",
+            f"Any hit probability: {_percent(summary.hit_probability)}",
             (
                 "Expected Good payout: "
                 f"${format_decimal(summary.expected_good_payout, config.decimal_places)}"

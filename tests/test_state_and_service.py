@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import tempfile
 import unittest
@@ -11,29 +12,34 @@ from test_support import install_stubs
 
 install_stubs()
 
+import anki_slot_machine.config as config_module
 from anki_slot_machine.config import load_config
 from anki_slot_machine.service import SlotMachineService
 from anki_slot_machine.state import SlotMachineState, StateRepository
 
 
-def make_config(**overrides):
+def build_profile(**overrides) -> dict:
+    profile = copy.deepcopy(config_module.DEFAULT_SLOT_PROFILE)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(profile.get(key), dict):
+            profile[key] = {**profile[key], **value}
+        else:
+            profile[key] = value
+    return profile
+
+
+def make_config(*, profile_overrides=None, **config_overrides):
     raw = {
         "starting_balance": 100,
-        "expected_multiplier_target": 1.10,
         "decimal_places": 2,
-        "rarity_exponent": 1.6,
-        "pair_scale_multiplier": 1,
-        "triple_scale_multiplier": 6,
-        "slot_faces": {
-            "SLOT_1": 50,
-            "SLOT_2": 28,
-            "SLOT_3": 15,
-            "SLOT_4": 6,
-            "SLOT_5": 1,
-        },
     }
-    raw.update(overrides)
-    return load_config.__globals__["config_from_raw"](raw)
+    raw.update(config_overrides)
+    profile = build_profile(**(profile_overrides or {}))
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        profile_path = Path(tmp_dir) / "profile.json"
+        profile_path.write_text(json.dumps(profile), encoding="utf-8")
+        raw["slot_profile_path"] = str(profile_path)
+        return load_config.__globals__["config_from_raw"](raw)
 
 
 class StateRepositoryTests(unittest.TestCase):
@@ -111,18 +117,8 @@ class ServiceTests(unittest.TestCase):
             snapshot = service.snapshot()
 
         self.assertEqual(snapshot["balance"], "100.00")
-        self.assertEqual(snapshot["fixed_bet_amount"], "1.00")
-        self.assertEqual(snapshot["default_slot_multiplier"], "0.00")
-
-    def test_set_bet_is_a_no_op_in_fixed_stake_mode(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
-            service.set_bet("10")
-            service.apply_review(card_id=1, ease=1, button_count=4)
-            snapshot = service.snapshot()
-
-        self.assertEqual(snapshot["balance"], "99.00")
-        self.assertEqual(snapshot["fixed_bet_amount"], "1.00")
+        self.assertNotIn("fixed_bet_amount", snapshot)
+        self.assertNotIn("default_slot_multiplier", snapshot)
 
     def test_loss_updates_balance_and_stats_without_touching_card_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -178,7 +174,10 @@ class ServiceTests(unittest.TestCase):
             snapshot = service.stats_snapshot()
 
         self.assertEqual(result.answer_key, "easy")
-        self.assertEqual(snapshot["total_won"], result.to_dict(config.decimal_places)["payout"])
+        self.assertEqual(
+            snapshot["total_won"],
+            result.to_dict(config.decimal_places)["payout"],
+        )
         self.assertEqual(snapshot["spins"], 1)
 
     def test_undo_last_review_restores_previous_slot_state(self) -> None:

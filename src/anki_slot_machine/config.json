@@ -1,15 +1,5 @@
 {
   "starting_balance": 100,
-  "expected_multiplier_target": 1.08,
   "decimal_places": 2,
-  "rarity_exponent": 2.2,
-  "pair_scale_multiplier": 0.35,
-  "triple_scale_multiplier": 12,
-  "slot_faces": {
-    "SLOT_1": 60,
-    "SLOT_2": 22,
-    "SLOT_3": 10,
-    "SLOT_4": 6,
-    "SLOT_5": 2
-  }
+  "slot_profile_path": "slot_profiles/base.json"
 }

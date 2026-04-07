@@ -10,8 +10,8 @@
   let lastAnimatedEventId = null;
   let amountTimeout = null;
   let revealTimeouts = [];
-  let defaultMoney = "1.00";
-  let defaultMultiplier = "1.00";
+  const defaultMoney = "1.00";
+  const defaultMultiplier = "0.00";
 
   function send(command, value) {
     if (typeof pycmd !== "function") {
@@ -61,20 +61,12 @@
         </div>
         <div class="anki-slot-machine-breakdown" data-slot-breakdown>
           <div class="anki-slot-machine-breakdown-line" data-slot-base>+$1</div>
-          <div class="anki-slot-machine-breakdown-line" data-slot-bonus>x 1</div>
-          <div class="anki-slot-machine-breakdown-line is-total" data-slot-total>= $1</div>
+          <div class="anki-slot-machine-breakdown-line" data-slot-bonus>x 0</div>
+          <div class="anki-slot-machine-breakdown-line is-total is-neutral" data-slot-total>= $0</div>
         </div>
         <div class="anki-slot-machine-particles" data-slot-particles></div>
       </div>
     `;
-
-    root.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-slot-action]");
-      if (!button || button.disabled) {
-        return;
-      }
-      send("set-bet", button.getAttribute("data-slot-value"));
-    });
 
     document.body.appendChild(root);
     return root;
@@ -283,8 +275,6 @@
 
   function syncState(nextState) {
     ensureRoot();
-    defaultMoney = String(nextState.fixed_bet_amount || defaultMoney);
-    defaultMultiplier = String(nextState.default_slot_multiplier || defaultMultiplier);
     root.querySelector("[data-slot-balance]").textContent = `$${nextState.balance || 0}`;
     renderBreakdown(nextState.last_result);
     if (

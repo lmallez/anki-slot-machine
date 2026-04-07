@@ -21,7 +21,7 @@ It **does** make you want to press "Good" just one more time.
 - 🎰 Real 3-reel slot result tied to the visible outcome
 - 💸 Persistent fake-money balance across review sessions
 - 📊 Odds and rewards page inside Anki
-- 🧮 Configurable EV-driven multiplier solver
+- 📁 File-based slot profile with reel faces and pair/triple payouts
 - 🧱 Pixel-art slot UI with local bundled assets
 - 🔒 No scheduling changes and no note/card field edits
 
@@ -60,10 +60,10 @@ That’s it. That’s the product.
 - **No match** → `x0`  
   → pain
 
-- **Exact pair** → derived pair multiplier  
+- **Exact pair** → profile pair multiplier  
   → small hope
 
-- **Triple** → derived triple multiplier  
+- **Triple** → profile triple multiplier  
   → the machine acknowledges your existence
 
 ---
@@ -80,15 +80,16 @@ Like life. But compressed into 300ms.
 
 ## 🧮 How it works (for nerds)
 
-- Each symbol has a probability based on `slot_faces`
+- The add-on loads one slot profile JSON file
+- That file defines reel faces, pair multipliers, and triple multipliers
+- Reel probabilities come from the face counts
 - Pairs and triples are evaluated from a real 3-reel result
-- Rarer symbols scale higher than common ones
-- Everything is tuned to hit a target expected value
+- The odds page computes the real distribution from that profile
 
 Important:
 
-Rare events are not there to make money.  
-They are there to make you feel alive.
+The machine is not solving the economy for you anymore.  
+It just runs the profile you give it.
 
 ---
 
@@ -99,29 +100,46 @@ Example:
 ```json
 {
   "starting_balance": 100,
-  "expected_multiplier_target": 1.08,
   "decimal_places": 2,
-  "rarity_exponent": 2.2,
-  "pair_scale_multiplier": 0.35,
-  "triple_scale_multiplier": 12,
-  "slot_faces": {
-    "SLOT_1": 60,
-    "SLOT_2": 22,
-    "SLOT_3": 10,
-    "SLOT_4": 6,
-    "SLOT_5": 2
+  "slot_profile_path": "slot_profiles/base.json"
+}
+```
+
+A slot profile looks like this:
+
+```json
+{
+  "name": "base",
+  "faces": {
+    "SLOT_1": 35,
+    "SLOT_2": 25,
+    "SLOT_3": 20,
+    "SLOT_4": 12,
+    "SLOT_5": 8
+  },
+  "pair_multipliers": {
+    "SLOT_1": 0.75,
+    "SLOT_2": 0.95,
+    "SLOT_3": 1.15,
+    "SLOT_4": 2.20,
+    "SLOT_5": 4.50
+  },
+  "triple_multipliers": {
+    "SLOT_1": 2.50,
+    "SLOT_2": 7.00,
+    "SLOT_3": 15.00,
+    "SLOT_4": 60.00,
+    "SLOT_5": 300.00
   }
 }
 ```
 
----
+Useful intuition:
 
-## 🧪 Tuning knobs
-
-- `rarity_exponent` → how unfair life is  
-- `pair_scale_multiplier` → how much small wins matter  
-- `triple_scale_multiplier` → how hard jackpots slap  
-- `expected_multiplier_target` → how fast you inflate your ego  
+- `faces` → how often each symbol shows up on one reel  
+- `pair_multipliers` → what an exact pair pays  
+- `triple_multipliers` → what a triple pays  
+- `slot_profile_path` → which profile file the add-on loads  
 
 ---
 
@@ -133,7 +151,7 @@ Includes:
 
 - real probabilities  
 - actual multipliers  
-- expected value  
+- expected payout per spin  
 
 ---
 

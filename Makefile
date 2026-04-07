@@ -2,7 +2,7 @@ PYTHON ?= $(shell if [ -x ./.venv/bin/python ]; then printf '%s' ./.venv/bin/pyt
 PACKAGE := src/anki_slot_machine
 PYTHON_SOURCES := $(shell find src -name '*.py' | sort)
 
-.PHONY: help build install lint format check test solver clean
+.PHONY: help build install lint format check test real-slot-report real-slot-plot clean
 
 DEV_VERSION := 0.0.0-dev.$(shell date -u +%Y%m%d%H%M%S)
 
@@ -15,7 +15,8 @@ help:
 		'  make format   Format Python files with black' \
 		'  make check    Compile Python sources to catch syntax errors' \
 		'  make test     Run the unit test suite' \
-		'  make solver   Print the slot EV solver breakdown from config.json' \
+		'  make real-slot-report  Evaluate a real slot from faces + fixed gains' \
+		'  make real-slot-plot    Plot a real slot from faces + fixed gains' \
 		'  make clean    Remove build artifacts and local caches'
 
 build:
@@ -31,13 +32,16 @@ format:
 	$(PYTHON) -m black src
 
 check:
-	$(PYTHON) -m py_compile $(PYTHON_SOURCES)
+	PYTHONPYCACHEPREFIX=/tmp/anki-slot-machine-pyc $(PYTHON) -m py_compile $(PYTHON_SOURCES)
 
 test:
 	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
 
-solver:
-	PYTHONPATH=src $(PYTHON) scripts/show_slot_solver.py
+real-slot-report:
+	$(PYTHON) scripts/evaluate_real_slot.py
+
+real-slot-plot:
+	PYTHONPATH=scripts $(PYTHON) scripts/plot_real_slot.py
 
 clean:
 	rm -rf dist
