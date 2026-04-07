@@ -95,8 +95,6 @@ It just runs the profile you give it.
 
 ## ⚙️ Config
 
-Example:
-
 ```json
 {
   "starting_balance": 100,
@@ -153,6 +151,11 @@ Includes:
 - actual multipliers  
 - expected payout per spin  
 
+The add-on menu also includes:
+
+- `Show Stats`
+- `Reset Balance and Stats`
+
 ---
 
 ## 💾 Persistence
@@ -161,6 +164,9 @@ Your fake wealth is stored locally.
 
 Yes, it survives restarts.  
 No, you cannot cash it out.  
+
+Runtime state is stored separately from Anki card data, so the add-on does not
+modify scheduling, note fields, or card content.
 
 ---
 
@@ -174,7 +180,7 @@ But it might make you review more cards.
 
 ---
 
-## 🏁 Final note
+## 🏁 Final Note
 
 If you ever find yourself thinking:
 

@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,7 +18,28 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.11"
+
+      - name: Install lint dependency
+        run: python -m pip install black
+
+      - name: Check formatting
+        run: make lint
+
+      - name: Run tests
+        run: make test
+
+  build:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Build add-on
         run: ./build.sh "${GITHUB_REF_NAME#v}"

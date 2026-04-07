@@ -111,7 +111,9 @@ class SlotMachineService:
         serialized_result = result.to_dict(config.decimal_places)
         state.last_result = serialized_result
         state.history = [serialized_result, *state.history][: config.history_limit]
-        state.undo_history = [previous_snapshot, *state.undo_history][: config.history_limit]
+        state.undo_history = [previous_snapshot, *state.undo_history][
+            : config.history_limit
+        ]
         self._repository.save(state, config)
         return result
 
