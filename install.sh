@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ $# -ne 1 || -z "${1:-}" ]]; then
+  echo "Usage: ./install.sh <version>" >&2
+  exit 1
+fi
+
+VERSION_VALUE="$1"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$REPO_ROOT/src/anki_slot_machine"
 MANIFEST_PATH="$SRC_DIR/manifest.json"
@@ -26,12 +33,14 @@ elif [[ -d "$HOME/.local/share/Anki2/addons21" ]]; then
   ADDONS_DIR="$HOME/.local/share/Anki2/addons21"
 else
   echo "Could not find an Anki add-ons directory." >&2
+  echo "Set ANKI_ADDONS_DIR to your addons21 path and rerun." >&2
   exit 1
 fi
 
 TARGET_DIR="$ADDONS_DIR/$PACKAGE_NAME"
 
-"$REPO_ROOT/build.sh"
+"$REPO_ROOT/build.sh" "$VERSION_VALUE"
+echo "Installing add-on into $TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 unzip -oq "$ARCHIVE_PATH" -d "$INSTALL_DIR"
 
@@ -41,4 +50,5 @@ rsync -a --delete \
   --exclude "*.pyc" \
   "$INSTALL_DIR/" "$TARGET_DIR/"
 
-echo "Installed into $TARGET_DIR"
+echo "Install complete."
+echo "Addon dir: $TARGET_DIR"

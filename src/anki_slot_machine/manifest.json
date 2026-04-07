@@ -1,7 +1,7 @@
 {
-  "package": "anki-slot-machine",
+  "package": "anki_slot_machine",
   "name": "[BETA] \uD83C\uDFB0 Anki Slot Machine",
   "author": "Louis Mallez",
-  "version": "0.0.0",
-  "mod": 0
+  "version": "${VERSION}",
+  "mod": "${MOD}"
 }
