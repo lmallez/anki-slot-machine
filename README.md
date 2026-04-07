@@ -1,5 +1,8 @@
 # 🎰 Anki Slot Machine
 
+[![CI](https://github.com/lmallez/anki-slot-machine/actions/workflows/ci.yml/badge.svg)](https://github.com/lmallez/anki-slot-machine/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 > Warning
 > This add-on is still in testing.
 > Expect balance tweaks, UI changes, and rough edges.
@@ -13,6 +16,20 @@ This add-on adds a completely unnecessary, slightly addictive, and emotionally m
 It does **not** improve your memory.  
 It does **not** change scheduling, intervals, cards, or notes.  
 It **does** make you want to press "Good" just one more time.
+
+---
+
+## ✨ Features
+
+- 🎰 Real 3-reel slot result tied to the visible outcome
+- 💸 Persistent fake-money balance across review sessions
+- 📊 Odds and rewards page inside Anki
+- 🧮 Configurable EV-driven multiplier solver
+- 🧱 Pixel-art slot UI with local bundled assets
+- 🔒 No scheduling changes and no note/card field edits
+
+Everything runs locally inside Anki. No CDN, no online dependency, no network
+call for the slot UI.
 
 ---
 
@@ -108,6 +125,25 @@ Useful intuition:
 - `expected_multiplier_target` → how fast you inflate your ego  
 
 More detail is documented in `src/anki_slot_machine/config.md`.
+
+---
+
+## 🚀 Installation
+
+This project is still in beta.
+
+If you are testing it locally:
+
+```bash
+make install
+```
+
+Or install the built `.ankiaddon` archive manually from the `dist/` folder after
+running:
+
+```bash
+make build
+```
 
 ---
 

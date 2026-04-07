@@ -16,6 +16,20 @@ It **does** make you want to press "Good" just one more time.
 
 ---
 
+## ✨ Features
+
+- 🎰 Real 3-reel slot result tied to the visible outcome
+- 💸 Persistent fake-money balance across review sessions
+- 📊 Odds and rewards page inside Anki
+- 🧮 Configurable EV-driven multiplier solver
+- 🧱 Pixel-art slot UI with local bundled assets
+- 🔒 No scheduling changes and no note/card field edits
+
+Everything runs locally inside Anki. No CDN, no online dependency, no network
+call for the slot UI.
+
+---
+
 ## 🧠 What is this?
 
 Every review becomes a gamble.
