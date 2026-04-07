@@ -11,6 +11,8 @@ stubs = install_stubs()
 
 from anki_slot_machine import reviewer
 
+reviewer.mw = stubs.mw
+
 
 class ReviewerHookTests(unittest.TestCase):
     def make_reviewer(self, button_count: int = 4):
@@ -86,6 +88,34 @@ class ReviewerHookTests(unittest.TestCase):
             card_id=456, ease=2, button_count=2
         )
         context.answerCard.assert_not_called()
+
+    def test_state_did_undo_restores_slot_state_after_review_undo(self) -> None:
+        fake_service = SimpleNamespace(undo_last_review=Mock(return_value=True))
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "refresh_active_reviewer") as refresh_active_reviewer,
+        ):
+            reviewer.on_state_did_undo(
+                SimpleNamespace(changes=SimpleNamespace(study_queues=True))
+            )
+
+        fake_service.undo_last_review.assert_called_once_with()
+        refresh_active_reviewer.assert_called_once_with()
+
+    def test_state_did_undo_ignores_non_review_undo(self) -> None:
+        fake_service = SimpleNamespace(undo_last_review=Mock(return_value=True))
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "refresh_active_reviewer") as refresh_active_reviewer,
+        ):
+            reviewer.on_state_did_undo(
+                SimpleNamespace(changes=SimpleNamespace(study_queues=False))
+            )
+
+        fake_service.undo_last_review.assert_not_called()
+        refresh_active_reviewer.assert_not_called()
 
     def test_refresh_pushes_serialized_state_to_webview(self) -> None:
         context = self.make_reviewer()

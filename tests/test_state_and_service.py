@@ -181,6 +181,41 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["total_won"], result.to_dict(config.decimal_places)["payout"])
         self.assertEqual(snapshot["spins"], 1)
 
+    def test_undo_last_review_restores_previous_slot_state(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_file = Path(tmp_dir) / "state.json"
+            service = self.make_service(config, state_file)
+            first = service.apply_review(card_id=11, ease=1, button_count=4)
+            expected_snapshot = service.snapshot()
+            expected_stats = service.stats_snapshot()
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_3", "SLOT_3", "SLOT_3"),
+            ):
+                service.apply_review(card_id=12, ease=3, button_count=4)
+
+            self.assertTrue(service.undo_last_review())
+
+            restored_snapshot = service.snapshot()
+            restored_stats = service.stats_snapshot()
+
+            reloaded = self.make_service(config, state_file)
+            reloaded_snapshot = reloaded.snapshot()
+            reloaded_stats = reloaded.stats_snapshot()
+
+        self.assertEqual(first.answer_key, "again")
+        self.assertEqual(restored_snapshot, expected_snapshot)
+        self.assertEqual(restored_stats, expected_stats)
+        self.assertEqual(reloaded_snapshot, expected_snapshot)
+        self.assertEqual(reloaded_stats, expected_stats)
+
+    def test_undo_last_review_returns_false_without_review_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
+
+            self.assertFalse(service.undo_last_review())
+
     def test_again_uses_fixed_one_dollar_stake_even_at_low_balance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(

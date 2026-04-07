@@ -79,6 +79,7 @@ class SlotMachineService:
     def apply_review(self, *, card_id: int, ease: int, button_count: int) -> SpinResult:
         config = self.config()
         state = self.state()
+        previous_snapshot = state.review_snapshot(config.decimal_places)
         bet = quantize_decimal(REVIEW_BET, config.decimal_places)
         answer_key = answer_key_for_rating(ease, button_count)
         result = build_spin_result(
@@ -118,8 +119,20 @@ class SlotMachineService:
         serialized_result = result.to_dict(config.decimal_places)
         state.last_result = serialized_result
         state.history = [serialized_result, *state.history][: config.history_limit]
+        state.undo_history = [previous_snapshot, *state.undo_history][: config.history_limit]
         self._repository.save(state, config)
         return result
+
+    def undo_last_review(self) -> bool:
+        config = self.config()
+        state = self.state()
+        if not state.undo_history:
+            return False
+
+        previous_snapshot = state.undo_history.pop(0)
+        state.restore_review_snapshot(previous_snapshot, config)
+        self._repository.save(state, config)
+        return True
 
     def reset_progress(self) -> None:
         config = self.config()

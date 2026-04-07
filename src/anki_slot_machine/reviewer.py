@@ -22,6 +22,8 @@ def register() -> None:
     gui_hooks.webview_did_receive_js_message.append(on_webview_did_receive_js_message)
     gui_hooks.reviewer_did_show_question.append(on_reviewer_did_show_question)
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_did_answer_card)
+    if hasattr(gui_hooks, "state_did_undo"):
+        gui_hooks.state_did_undo.append(on_state_did_undo)
     _registered = True
 
 
@@ -83,6 +85,13 @@ def on_reviewer_did_answer_card(reviewer, card, ease: int) -> None:
     get_service().apply_review(card_id=card.id, ease=ease, button_count=button_count)
 
 
+def on_state_did_undo(changes) -> None:
+    if not _is_review_undo(changes):
+        return
+    if get_service().undo_last_review():
+        refresh_active_reviewer()
+
+
 def refresh_active_reviewer() -> None:
     reviewer = getattr(mw, "reviewer", None)
     if not reviewer or getattr(reviewer, "card", None) is None:
@@ -127,3 +136,8 @@ def _push_snapshot(reviewer, snapshot: dict) -> None:
     web.eval(
         "window.AnkiSlotMachine && " f"window.AnkiSlotMachine.syncState({payload});"
     )
+
+
+def _is_review_undo(changes) -> bool:
+    nested_changes = getattr(changes, "changes", changes)
+    return bool(getattr(nested_changes, "study_queues", False))

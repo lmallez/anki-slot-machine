@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+_ADDON_MODULES_RESET = False
 
 
 class _Signal:
@@ -98,12 +99,16 @@ class _Reviewer:
 
 
 def install_stubs() -> SimpleNamespace:
+    global _ADDON_MODULES_RESET
+
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
 
-    for name in list(sys.modules):
-        if name == "anki_slot_machine" or name.startswith("anki_slot_machine."):
-            del sys.modules[name]
+    if not _ADDON_MODULES_RESET:
+        for name in list(sys.modules):
+            if name == "anki_slot_machine" or name.startswith("anki_slot_machine."):
+                del sys.modules[name]
+        _ADDON_MODULES_RESET = True
 
     for name in ("aqt", "aqt.reviewer", "aqt.qt", "aqt.utils"):
         sys.modules.pop(name, None)
@@ -129,6 +134,7 @@ def install_stubs() -> SimpleNamespace:
         webview_did_receive_js_message=[],
         reviewer_did_show_question=[],
         reviewer_did_answer_card=[],
+        state_did_undo=[],
         main_window_did_init=[],
     )
 
