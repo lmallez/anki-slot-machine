@@ -123,6 +123,11 @@
     }
   }
 
+  function persistLayout(layout) {
+    saveLayout(layout);
+    send("saveLayout", JSON.stringify(layout));
+  }
+
   function defaultLayout() {
     const width = fitWidthToViewport(DEFAULT_WIDTH);
     const height = Math.round(width * WINDOW_RATIO);
@@ -231,7 +236,7 @@
     launcher.hidden = !isClosed;
 
     if (!options || options.persist !== false) {
-      saveLayout(currentLayout);
+      persistLayout(currentLayout);
     }
   }
 
@@ -240,6 +245,9 @@
   }
 
   function endInteraction() {
+    if (interaction && currentLayout) {
+      persistLayout(currentLayout);
+    }
     interaction = null;
     document.body.classList.remove("anki-slot-machine-is-dragging");
     document.body.classList.remove("anki-slot-machine-is-resizing");
@@ -579,7 +587,9 @@
 
   function syncState(nextState) {
     ensureRoot();
-    if (currentLayout == null) {
+    if (nextState && nextState.window_layout) {
+      applyLayout(nextState.window_layout, { persist: false });
+    } else if (currentLayout == null) {
       applyLayout(loadLayout(), { persist: false });
     }
     root.querySelector("[data-slot-balance]").textContent = `$${nextState.balance || 0}`;

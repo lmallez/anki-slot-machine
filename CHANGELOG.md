@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.3] - 2026-04-08
+
+### Added
+
+- Persistent slot window layout saving, including size and position restoration
+  across reviewer refreshes and Anki restarts.
+- Reviewer tests covering saved window layout refresh and layout persistence
+  messages.
+
+### Changed
+
+- Reworked the floating slot window so it can be dragged, resized, closed, and
+  reopened from the reviewer.
+- Simplified the window chrome to a single close control plus resize handle.
+- Fixed the resize architecture so the slot UI uses one stable inner coordinate
+  system while the outer window scales around it.
+- Improved the fail-state animation so `Again` no longer reuses win-style reel
+  highlighting.
+- Fixed the loss shake so it follows the current floating window size and
+  position correctly.
+- Made the floating payout amount much more visible, with stronger styling,
+  green positive wins, neutral `-$0`, and amount-based text scaling for large
+  wins and losses.
+- Cleaned up stale frontend code and removed unused CSS animation leftovers.
+
 ## [v0.0.2] - 2026-04-07
 
 ### Added

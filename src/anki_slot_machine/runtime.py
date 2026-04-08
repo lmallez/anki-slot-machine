@@ -7,6 +7,7 @@ from aqt import mw
 ADDON_MODULE = __name__.split(".")[0]
 WEB_EXPORT_PATTERN = r"web/.*(css|js|png)"
 STATE_FILENAME = "slot_machine_state.json"
+WINDOW_LAYOUT_CONFIG_KEY = "window_layout"
 
 
 def addon_config() -> dict:
@@ -15,6 +16,17 @@ def addon_config() -> dict:
 
 def write_addon_config(config: dict) -> None:
     mw.addonManager.writeConfig(ADDON_MODULE, config)
+
+
+def read_window_layout() -> dict | None:
+    layout = addon_config().get(WINDOW_LAYOUT_CONFIG_KEY)
+    return layout if isinstance(layout, dict) else None
+
+
+def write_window_layout(layout: dict) -> None:
+    config = addon_config()
+    config[WINDOW_LAYOUT_CONFIG_KEY] = layout
+    write_addon_config(config)
 
 
 def register_web_exports() -> None:

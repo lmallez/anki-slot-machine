@@ -63,7 +63,10 @@ class ReviewerHookTests(unittest.TestCase):
                 }
             ),
         )
-        with patch.object(reviewer, "get_service", return_value=fake_service):
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "read_window_layout", return_value=None),
+        ):
             handled, payload = reviewer.on_webview_did_receive_js_message(
                 (False, None), "anki-slot-machine:refresh", context
             )
@@ -74,6 +77,39 @@ class ReviewerHookTests(unittest.TestCase):
         script = context.web.eval.call_args[0][0]
         self.assertIn("syncState", script)
         self.assertIn('"balance": "125.00"', script)
+
+    def test_refresh_includes_saved_window_layout(self) -> None:
+        context = self.make_reviewer()
+        fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "125.00"}))
+        saved_layout = {"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"}
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "read_window_layout", return_value=saved_layout),
+        ):
+            handled, payload = reviewer.on_webview_did_receive_js_message(
+                (False, None), "anki-slot-machine:refresh", context
+            )
+
+        self.assertTrue(handled)
+        self.assertIsNone(payload)
+        script = context.web.eval.call_args[0][0]
+        self.assertIn('"window_layout"', script)
+        self.assertIn('"width": 300', script)
+
+    def test_save_layout_message_persists_window_layout(self) -> None:
+        context = self.make_reviewer()
+        payload = json.dumps({"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"})
+
+        with patch.object(reviewer, "write_window_layout") as write_window_layout:
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), f"anki-slot-machine:saveLayout:{payload}", context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        write_window_layout.assert_called_once_with(
+            {"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"}
+        )
 
     def test_already_handled_filter_state_is_preserved(self) -> None:
         context = self.make_reviewer()

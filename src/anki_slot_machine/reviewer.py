@@ -4,7 +4,12 @@ import json
 
 from aqt import gui_hooks, mw
 
-from .runtime import addon_web_base_url, register_web_exports
+from .runtime import (
+    addon_web_base_url,
+    read_window_layout,
+    register_web_exports,
+    write_window_layout,
+)
 from .service import get_service
 
 COMMAND_PREFIX = "anki-slot-machine"
@@ -47,13 +52,23 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
     if not message.startswith(f"{COMMAND_PREFIX}:"):
         return handled_result
 
-    _, action, *_ = message.split(":")
+    payload = message[len(f"{COMMAND_PREFIX}:") :]
+    action, value = payload.split(":", 1) if ":" in payload else (payload, None)
 
     if action == "refresh":
         snapshot = get_service().snapshot(
             card_id=_current_card_id(context),
             answer_button_count=_answer_button_count(context),
         )
+    elif action == "saveLayout" and value is not None:
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            return handled_result
+        if isinstance(decoded, dict):
+            write_window_layout(decoded)
+            return True, None
+        return handled_result
     else:
         return handled_result
 
@@ -126,7 +141,11 @@ def _push_snapshot(reviewer, snapshot: dict) -> None:
     web = getattr(reviewer, "web", None)
     if not web:
         return
-    payload = json.dumps(snapshot, ensure_ascii=False)
+    enriched_snapshot = dict(snapshot)
+    layout = read_window_layout()
+    if layout is not None:
+        enriched_snapshot["window_layout"] = layout
+    payload = json.dumps(enriched_snapshot, ensure_ascii=False)
     web.eval(
         "window.AnkiSlotMachine && " f"window.AnkiSlotMachine.syncState({payload});"
     )
