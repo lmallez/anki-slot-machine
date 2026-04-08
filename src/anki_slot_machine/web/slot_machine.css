@@ -29,55 +29,190 @@
   --emerald-dark: #2e8a3d;
   --outline: #261412;
   --screen: #121212;
+  --window-shell: linear-gradient(180deg, rgba(168, 53, 49, 0.98), rgba(111, 29, 30, 0.98));
+  --window-titlebar: linear-gradient(180deg, rgba(208, 84, 72, 0.98), rgba(146, 41, 40, 0.98));
+  --window-divider: rgba(38, 20, 18, 0.4);
+  --window-border: rgba(38, 20, 18, 0.55);
+  --traffic-red: #ff5f57;
+  --traffic-green: #28c840;
 }
 
 #anki-slot-machine-root {
   position: fixed;
-  right: 44px;
   top: 50%;
-  transform: translateY(-50%);
   width: 316px;
+  height: 480px;
   z-index: 9999;
   pointer-events: none;
   font-family: "Courier New", monospace;
+  --slot-scale: 1;
+  --slot-window-scale: 1;
+  --slot-machine-symbol-size: 64px;
+  --slot-machine-reel-height: 182px;
+  --slot-machine-window-width: 248px;
+  --slot-machine-breakdown-width: 192px;
+  --slot-machine-amount-top: 76px;
+  --slot-machine-particles-top: 94px;
+}
+
+#anki-slot-machine-root [hidden] {
+  display: none !important;
+}
+
+#anki-slot-machine-root.is-closed {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  height: auto;
+}
+
+#anki-slot-machine-root.is-closed .anki-slot-machine-amount {
+  display: none;
+}
+
+#anki-slot-machine-root.is-closed .anki-slot-machine-launcher {
+  position: static;
+  margin: 0;
+}
+
+.anki-slot-machine-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--slot-window-scale));
+  margin-left: auto;
+  padding: calc(7px * var(--slot-window-scale)) calc(11px * var(--slot-window-scale));
+  border: 1px solid rgba(38, 20, 18, 0.55);
+  border-radius: calc(12px * var(--slot-window-scale));
+  background: linear-gradient(180deg, rgba(168, 53, 49, 0.96), rgba(111, 29, 30, 0.96));
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px * var(--slot-window-scale));
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  position: absolute;
+  top: 0;
+  right: 0;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.anki-slot-machine-launcher::before {
+  display: none;
+}
+
+.anki-slot-machine-launcher-dot {
+  width: calc(8px * var(--slot-window-scale));
+  height: calc(8px * var(--slot-window-scale));
+  border-radius: 999px;
+  background: var(--traffic-green);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
 }
 
 .anki-slot-machine-machine {
   position: relative;
   width: 100%;
-  padding: 14px 14px 18px;
-  border: 2px solid var(--outline);
-  border-radius: 10px;
-  background: var(--machine-red);
-  image-rendering: pixelated;
-}
-
-.anki-slot-machine-machine::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  border-top: 4px solid var(--machine-red-light);
-  border-left: 4px solid var(--machine-red-light);
-  border-right: 4px solid var(--machine-red-dark);
-  border-bottom: 4px solid var(--machine-red-dark);
-  pointer-events: none;
+  height: 100%;
+  pointer-events: auto;
+  overflow: hidden;
+  border-radius: calc(14px * var(--slot-window-scale));
 }
 
 .anki-slot-machine-machine.is-loss {
   animation: anki-slot-machine-shake 170ms steps(2, end);
 }
 
+.anki-slot-machine-machine-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 316px;
+  height: 480px;
+  padding: 12px 12px 6px;
+  border: 1px solid var(--window-border);
+  border-radius: 14px;
+  background: var(--window-shell);
+  image-rendering: pixelated;
+  box-sizing: border-box;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+  transform-origin: top left;
+  transform: scale(var(--slot-window-scale));
+}
+
+.anki-slot-machine-machine-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  border-top: 1px solid rgba(244, 219, 123, 0.18);
+  pointer-events: none;
+}
+
+.anki-slot-machine-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(12px * var(--slot-scale));
+  margin: calc(-12px * var(--slot-scale)) calc(-12px * var(--slot-scale)) calc(12px * var(--slot-scale));
+  padding: calc(10px * var(--slot-scale)) calc(14px * var(--slot-scale));
+  border-bottom: 1px solid var(--window-divider);
+  background: var(--window-titlebar);
+  user-select: none;
+  cursor: move;
+}
+
+.anki-slot-machine-title {
+  color: var(--text);
+  font-size: calc(12px * var(--slot-scale));
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  opacity: 0.95;
+  text-align: center;
+  flex: 1 1 auto;
+}
+
+.anki-slot-machine-titlebar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--slot-scale));
+  flex: 0 0 auto;
+}
+
+.anki-slot-machine-window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--slot-scale));
+  flex: 0 0 auto;
+}
+
+.anki-slot-machine-window-button {
+  width: calc(12px * var(--slot-scale));
+  height: calc(12px * var(--slot-scale));
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22) inset;
+}
+
+.anki-slot-machine-window-button.is-close {
+  background: var(--traffic-red);
+}
+
 .anki-slot-machine-lights {
   display: flex;
-  gap: 6px;
+  gap: calc(5px * var(--slot-scale));
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: calc(14px * var(--slot-scale));
+  opacity: 0.76;
 }
 
 .anki-slot-machine-light {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--slot-scale));
+  height: calc(12px * var(--slot-scale));
   border: 2px solid var(--gold-dark);
   background: var(--gold);
   box-sizing: border-box;
@@ -87,35 +222,34 @@
 .anki-slot-machine-light::before {
   content: "";
   position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 4px;
-  height: 4px;
+  top: calc(1px * var(--slot-scale));
+  left: calc(1px * var(--slot-scale));
+  width: calc(4px * var(--slot-scale));
+  height: calc(4px * var(--slot-scale));
   background: var(--gold-light);
 }
 
 .anki-slot-machine-balance {
-  position: absolute;
-  top: 16px;
-  right: 14px;
-  min-width: 68px;
-  padding: 4px 6px;
-  border: 2px solid var(--gold-dark);
-  background: var(--screen);
+  min-width: 70px;
+  padding: calc(4px * var(--slot-scale)) calc(8px * var(--slot-scale));
+  border: 1px solid rgba(38, 20, 18, 0.55);
+  border-radius: calc(8px * var(--slot-scale));
+  background: rgba(17, 18, 21, 0.55);
   color: var(--text);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: calc(13px * var(--slot-scale));
+  font-weight: 600;
   text-align: center;
   line-height: 1;
 }
 
 .anki-slot-machine-window {
   position: relative;
-  margin: 32px auto 12px;
-  padding: 10px;
-  width: 248px;
+  margin: 0 auto calc(12px * var(--slot-scale));
+  padding: calc(9px * var(--slot-scale));
+  width: min(var(--slot-machine-window-width), calc(100% - 12px));
   border: 2px solid var(--slot-frame-border);
   background: var(--screen);
+  box-sizing: border-box;
 }
 
 .anki-slot-machine-window::before {
@@ -132,11 +266,11 @@
 .anki-slot-machine-reels {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: calc(8px * var(--slot-scale));
 }
 
 .anki-slot-machine-reel {
-  height: 182px;
+  height: var(--slot-machine-reel-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -157,13 +291,13 @@
 
 .anki-slot-machine-symbol {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: var(--slot-machine-symbol-size);
+  height: var(--slot-machine-symbol-size);
 }
 
 .anki-slot-machine-symbol.is-blank {
-  width: 64px;
-  height: 64px;
+  width: var(--slot-machine-symbol-size);
+  height: var(--slot-machine-symbol-size);
   background: transparent;
 }
 
@@ -172,7 +306,7 @@
   inset: 0;
   background-repeat: no-repeat;
   background-position: center;
-  background-size: 64px 64px;
+  background-size: var(--slot-machine-symbol-size) var(--slot-machine-symbol-size);
   image-rendering: pixelated;
   z-index: 2;
 }
@@ -200,37 +334,53 @@
 .anki-slot-machine-amount {
   position: absolute;
   left: 50%;
-  top: 76px;
+  top: var(--slot-machine-amount-top);
   transform: translateX(-50%);
   opacity: 0;
-  font-size: 22px;
-  font-weight: 700;
+  min-width: calc(112px * var(--slot-scale));
+  padding: calc(6px * var(--slot-scale)) calc(10px * var(--slot-scale));
+  border: 2px solid transparent;
+  border-radius: calc(10px * var(--slot-scale));
+  background: rgba(7, 7, 7, 0.88);
+  box-sizing: border-box;
+  text-align: center;
+  --slot-amount-font-scale: 1;
+  font-size: calc(24px * var(--slot-scale) * var(--slot-amount-font-scale));
+  font-weight: 800;
+  letter-spacing: 0.02em;
   line-height: 1;
   pointer-events: none;
   z-index: 6;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
 }
 
 .anki-slot-machine-amount.is-visible {
-  animation: anki-slot-machine-float 520ms linear forwards;
+  animation: anki-slot-machine-float 760ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 .anki-slot-machine-amount.is-win {
   color: var(--win);
+  border-color: rgba(95, 200, 111, 0.55);
+  box-shadow: 0 0 0 1px rgba(95, 200, 111, 0.16) inset, 0 10px 18px rgba(9, 24, 11, 0.35);
 }
 
 .anki-slot-machine-amount.is-loss {
   color: var(--loss);
+  border-color: rgba(211, 91, 86, 0.42);
+  box-shadow: 0 0 0 1px rgba(211, 91, 86, 0.12) inset, 0 10px 18px rgba(27, 10, 10, 0.28);
 }
 
 .anki-slot-machine-amount.is-neutral {
   color: var(--text);
+  border-color: rgba(212, 169, 71, 0.34);
+  box-shadow: 0 0 0 1px rgba(212, 169, 71, 0.1) inset, 0 10px 18px rgba(0, 0, 0, 0.22);
 }
 
 .anki-slot-machine-particles {
   position: absolute;
   left: 0;
   right: 0;
-  top: 96px;
+  top: var(--slot-machine-particles-top);
   height: 160px;
   pointer-events: none;
   overflow: hidden;
@@ -238,20 +388,20 @@
 }
 
 .anki-slot-machine-breakdown {
-  width: 74%;
-  margin: 0 auto 12px;
-  padding: 10px 0 8px;
+  width: min(var(--slot-machine-breakdown-width), calc(100% - 52px));
+  margin: 0 auto calc(4px * var(--slot-scale));
+  padding: calc(9px * var(--slot-scale)) 0 calc(8px * var(--slot-scale));
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--slot-scale));
   position: relative;
   border: 2px solid var(--slot-frame-border);
   background: var(--screen);
   box-sizing: border-box;
   color: var(--text);
   text-align: right;
-  font-size: 15px;
+  font-size: calc(14px * var(--slot-scale));
   font-weight: 700;
   line-height: 1.25;
 }
@@ -272,9 +422,9 @@
   align-items: center;
   justify-content: flex-end;
   width: 100%;
-  min-height: 22px;
+  min-height: calc(21px * var(--slot-scale));
   margin: 0;
-  padding: 0 12px;
+  padding: 0 calc(12px * var(--slot-scale));
   box-sizing: border-box;
   position: relative;
 }
@@ -282,30 +432,30 @@
 .anki-slot-machine-breakdown-line:not(:last-child)::after {
   content: "";
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -4px;
+  left: calc(8px * var(--slot-scale));
+  right: calc(8px * var(--slot-scale));
+  bottom: calc(-4px * var(--slot-scale));
   height: 2px;
   background: #3a2b16;
 }
 
 .anki-slot-machine-symbol--inline {
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--slot-scale));
+  height: calc(18px * var(--slot-scale));
   flex: 0 0 auto;
   vertical-align: middle;
 }
 
 .anki-slot-machine-symbol--inline .anki-slot-machine-symbol-sprite {
-  background-size: 18px 18px;
+  background-size: calc(18px * var(--slot-scale)) calc(18px * var(--slot-scale));
 }
 
 .anki-slot-machine-multiplier {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: calc(8px * var(--slot-scale));
 }
 
 .anki-slot-machine-multiplier-text {
@@ -318,11 +468,11 @@
   line-height: 1;
   color: var(--slot-frame-bottom-right);
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: calc(12px * var(--slot-scale));
 }
 
 .anki-slot-machine-breakdown-line.is-total {
-  font-size: 18px;
+  font-size: calc(17px * var(--slot-scale));
   font-weight: 800;
 }
 
@@ -340,8 +490,8 @@
 
 .anki-slot-machine-particle {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--slot-scale));
+  height: calc(6px * var(--slot-scale));
   opacity: 0;
   animation: anki-slot-machine-particle 420ms linear forwards;
 }
@@ -352,6 +502,59 @@
 
 .anki-slot-machine-particle.is-loss {
   background: var(--loss);
+}
+
+.anki-slot-machine-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: calc(22px * var(--slot-window-scale));
+  height: calc(22px * var(--slot-window-scale));
+  padding: 0;
+  border: 0;
+  border-radius: calc(4px * var(--slot-window-scale));
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  box-shadow: none;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  opacity: 0.68;
+}
+
+.anki-slot-machine-launcher:hover,
+.anki-slot-machine-window-button:hover,
+.anki-slot-machine-window-button:focus-visible {
+  filter: brightness(1.08);
+}
+
+.anki-slot-machine-resize::before,
+.anki-slot-machine-resize::after {
+  content: "";
+  position: absolute;
+  right: calc(6px * var(--slot-window-scale));
+  bottom: calc(6px * var(--slot-window-scale));
+  width: calc(8px * var(--slot-window-scale));
+  height: 2px;
+  background: var(--gold);
+  transform-origin: right bottom;
+}
+
+.anki-slot-machine-resize::before {
+  transform: rotate(-45deg) translate(0, 0);
+}
+
+.anki-slot-machine-resize::after {
+  right: calc(9px * var(--slot-window-scale));
+  bottom: calc(9px * var(--slot-window-scale));
+  width: calc(5px * var(--slot-window-scale));
+  transform: rotate(-45deg) translate(0, 0);
+}
+
+body.anki-slot-machine-is-dragging,
+body.anki-slot-machine-is-resizing {
+  user-select: none;
 }
 
 @keyframes anki-slot-machine-spin {
@@ -377,12 +580,20 @@
 
 @keyframes anki-slot-machine-float {
   0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.86);
+  }
+  18% {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateX(-50%) translateY(-2px) scale(1.08);
+  }
+  62% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-10px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateX(-50%) translateY(-14px);
+    transform: translateX(-50%) translateY(-22px) scale(0.98);
   }
 }
 
