@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.5] - 2026-04-09
+
+- Added multi-slot support with a shared bankroll and stats.
+- Added reviewer controls to add, close, and hide slot windows.
+
 ## [v0.0.4] - 2026-04-09
 
 - Added a live terminal-style stats window and a `Stats` button in the floating

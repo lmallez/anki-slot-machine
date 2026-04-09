@@ -17,6 +17,8 @@ It does **not** improve your memory.
 It does **not** change scheduling, intervals, cards, or notes.  
 It **does** make you want to press "Good" just one more time.
 
+![Anki Slot Machine screenshot](docs/images/anki-slot-machine.jpeg)
+
 ---
 
 ## ✨ Features
@@ -94,6 +96,16 @@ Important:
 
 The machine is not solving the economy for you anymore.  
 It just runs the profile you give it.
+
+---
+
+## Short Changelog
+
+- `v0.0.5` Multi-slot support with one shared bankroll and quick slot controls.
+- `v0.0.4` Stats window, better history tracking, and stronger layout/state handling.
+- `v0.0.3` Draggable, resizable slot window with saved layout.
+- `v0.0.2` Slot profiles, undo support, and spun-loss `Again` behavior.
+- `v0.0.1` Initial playable slot-machine add-on release.
 
 ---
 
