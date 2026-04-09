@@ -28,10 +28,12 @@
   const VIEWPORT_MARGIN = 12;
   const defaultMoney = "1.00";
   const defaultMultiplier = "0.00";
+  const CONTROL_PANEL_STORAGE_KEY = `anki-slot-machine-control-panel-v1:${INSTANCE_KEY}`;
   const machineViews = {};
   let controlPanel = null;
   let closeAllConfirmOpen = false;
   let lastSyncedMachineCount = 0;
+  let controlPanelCollapsed = false;
   let interaction = null;
   let hasHydratedLayouts = false;
   let windowEventsBound = false;
@@ -46,6 +48,25 @@
 
   function layoutStorageKey(machineKey) {
     return `anki-slot-machine-layout-v2:${INSTANCE_KEY}:${machineKey}`;
+  }
+
+  function readControlPanelCollapsed() {
+    try {
+      return window.localStorage.getItem(CONTROL_PANEL_STORAGE_KEY) === "collapsed";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function writeControlPanelCollapsed(collapsed) {
+    try {
+      window.localStorage.setItem(
+        CONTROL_PANEL_STORAGE_KEY,
+        collapsed ? "collapsed" : "expanded",
+      );
+    } catch (_error) {
+      // Ignore storage failures.
+    }
   }
 
   function toSymbol(symbol) {
@@ -149,18 +170,30 @@
     controlPanel.className = "anki-slot-machine-control-panel";
     controlPanel.innerHTML = `
       <div class="anki-slot-machine-control-panel-inner">
+        <button class="anki-slot-machine-control-button is-collapse" data-slot-panel-collapse type="button">Hide</button>
         <button class="anki-slot-machine-control-button is-add" data-slot-panel-add type="button">Add Slot</button>
         <button class="anki-slot-machine-control-button is-close-all" data-slot-panel-close-all type="button">Close All</button>
         <button class="anki-slot-machine-control-button is-confirm" data-slot-panel-confirm type="button" hidden>Confirm</button>
         <button class="anki-slot-machine-control-button is-cancel" data-slot-panel-cancel type="button" hidden>Cancel</button>
       </div>
+      <button class="anki-slot-machine-control-pill" data-slot-panel-expand type="button" hidden>Slots</button>
     `;
     document.body.appendChild(controlPanel);
 
+    controlPanelCollapsed = readControlPanelCollapsed();
+    const collapseButton = controlPanel.querySelector("[data-slot-panel-collapse]");
     const addButton = controlPanel.querySelector("[data-slot-panel-add]");
     const closeAllButton = controlPanel.querySelector("[data-slot-panel-close-all]");
     const confirmButton = controlPanel.querySelector("[data-slot-panel-confirm]");
     const cancelButton = controlPanel.querySelector("[data-slot-panel-cancel]");
+    const expandButton = controlPanel.querySelector("[data-slot-panel-expand]");
+
+    collapseButton.addEventListener("click", () => {
+      closeAllConfirmOpen = false;
+      controlPanelCollapsed = true;
+      writeControlPanelCollapsed(true);
+      updateControlPanelState(lastSyncedMachineCount);
+    });
 
     addButton.addEventListener("click", () => {
       closeAllConfirmOpen = false;
@@ -180,20 +213,41 @@
       closeAllConfirmOpen = false;
       updateControlPanelState(lastSyncedMachineCount);
     });
+    expandButton.addEventListener("click", () => {
+      controlPanelCollapsed = false;
+      writeControlPanelCollapsed(false);
+      updateControlPanelState(lastSyncedMachineCount);
+    });
 
     return controlPanel;
   }
 
   function updateControlPanelState(machineCount) {
     const panel = ensureControlPanel();
+    const panelInner = panel.querySelector(".anki-slot-machine-control-panel-inner");
+    const collapseButton = panel.querySelector("[data-slot-panel-collapse]");
     const closeAllButton = panel.querySelector("[data-slot-panel-close-all]");
     const confirmButton = panel.querySelector("[data-slot-panel-confirm]");
     const cancelButton = panel.querySelector("[data-slot-panel-cancel]");
+    const expandButton = panel.querySelector("[data-slot-panel-expand]");
     const canCloseAll = Number(machineCount || 0) > 0;
 
+    if (controlPanelCollapsed) {
+      closeAllConfirmOpen = false;
+    }
     closeAllButton.disabled = !canCloseAll;
     if (!canCloseAll) {
       closeAllConfirmOpen = false;
+    }
+    panel.classList.toggle("is-collapsed", controlPanelCollapsed);
+    if (panelInner) {
+      panelInner.hidden = controlPanelCollapsed;
+    }
+    if (expandButton) {
+      expandButton.hidden = !controlPanelCollapsed;
+    }
+    if (collapseButton) {
+      collapseButton.hidden = controlPanelCollapsed;
     }
     confirmButton.hidden = !closeAllConfirmOpen;
     cancelButton.hidden = !closeAllConfirmOpen;

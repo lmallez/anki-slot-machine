@@ -98,14 +98,18 @@ class FakeElement {
   set innerHTML(value) {
     this._innerHTML = value;
     if (String(value).includes("data-slot-panel-add")) {
+      const collapseButton = new FakeElement("button");
       const addButton = new FakeElement("button");
       const closeAllButton = new FakeElement("button");
       const confirmButton = new FakeElement("button");
       const cancelButton = new FakeElement("button");
+      const expandButton = new FakeElement("button");
+      this._selectorMap.set("[data-slot-panel-collapse]", collapseButton);
       this._selectorMap.set("[data-slot-panel-add]", addButton);
       this._selectorMap.set("[data-slot-panel-close-all]", closeAllButton);
       this._selectorMap.set("[data-slot-panel-confirm]", confirmButton);
       this._selectorMap.set("[data-slot-panel-cancel]", cancelButton);
+      this._selectorMap.set("[data-slot-panel-expand]", expandButton);
       return;
     }
     if (!String(value).includes("data-slot-machine")) {
