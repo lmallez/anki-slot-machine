@@ -263,7 +263,7 @@ class ReviewerHookTests(unittest.TestCase):
             )
 
         fake_service.undo_last_review.assert_called_once_with()
-        refresh_active_reviewer.assert_called_once_with()
+        refresh_active_reviewer.assert_called_once_with(suppress_animation=True)
 
     def test_state_did_undo_ignores_non_review_undo(self) -> None:
         fake_service = SimpleNamespace(undo_last_review=Mock(return_value=True))
@@ -293,6 +293,18 @@ class ReviewerHookTests(unittest.TestCase):
         script = context.web.eval.call_args[0][0]
         payload = script.split(".syncState(", 1)[1].rsplit(");", 1)[0]
         self.assertEqual(json.loads(payload), {"balance": "99.00"})
+
+    def test_refresh_active_reviewer_can_suppress_animation(self) -> None:
+        context = self.make_reviewer()
+        stubs.mw.reviewer = context
+        fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "99.00"}))
+
+        with patch.object(reviewer, "get_service", return_value=fake_service):
+            reviewer.refresh_active_reviewer(suppress_animation=True)
+
+        script = context.web.eval.call_args[0][0]
+        payload = script.split(".syncState(", 1)[1].rsplit(");", 1)[0]
+        self.assertEqual(json.loads(payload), {"balance": "99.00", "suppress_animation": True})
 
 
 if __name__ == "__main__":

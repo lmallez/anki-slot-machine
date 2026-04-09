@@ -157,10 +157,10 @@ def on_state_did_undo(changes) -> None:
     if not _is_review_undo(changes):
         return
     if get_service().undo_last_review():
-        refresh_active_reviewer()
+        refresh_active_reviewer(suppress_animation=True)
 
 
-def refresh_active_reviewer() -> None:
+def refresh_active_reviewer(*, suppress_animation: bool = False) -> None:
     reviewer = getattr(mw, "reviewer", None)
     if not reviewer or getattr(reviewer, "card", None) is None:
         return
@@ -170,6 +170,7 @@ def refresh_active_reviewer() -> None:
             card_id=_current_card_id(reviewer),
             answer_button_count=_answer_button_count(reviewer),
         ),
+        suppress_animation=suppress_animation,
     )
 
 
@@ -196,11 +197,15 @@ def _answer_button_count(reviewer, card=None) -> int:
         return 4
 
 
-def _push_snapshot(reviewer, snapshot: dict) -> None:
+def _push_snapshot(
+    reviewer, snapshot: dict, *, suppress_animation: bool = False
+) -> None:
     web = getattr(reviewer, "web", None)
     if not web:
         return
     enriched_snapshot = dict(snapshot)
+    if suppress_animation:
+        enriched_snapshot["suppress_animation"] = True
     layouts = read_window_layouts()
     if layouts:
         enriched_snapshot["window_layouts"] = layouts

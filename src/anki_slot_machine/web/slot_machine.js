@@ -161,6 +161,7 @@
       root,
       currentLayout: null,
       lastAnimatedEventId: null,
+      hasHydratedResult: false,
       amountTimeout: null,
       activeSpin: null,
       reelStrip: SYMBOLS.slice(),
@@ -1043,11 +1044,18 @@
         return result;
       }
     }
-    return rawResults[0] || null;
+    for (let index = 0; index < rawResults.length; index += 1) {
+      const result = rawResults[index];
+      if (result && !String(result.machine_key || "").trim()) {
+        return result;
+      }
+    }
+    return null;
   }
 
   function syncState(nextState) {
     const state = nextState || {};
+    const suppressAnimation = Boolean(state.suppress_animation);
     ensureControlPanel();
     let machines = [];
     if (Array.isArray(state.machines)) {
@@ -1098,6 +1106,23 @@
       );
       view.spinDurationMs = clampSpinDuration(state.spin_animation_duration_ms);
       const machineResult = machineResultFor(state.last_result, machine.key);
+      if (!view.hasHydratedResult) {
+        if (machineResult && machineResult.event_id) {
+          view.lastAnimatedEventId = machineResult.event_id;
+        }
+        renderBreakdown(view, machineResult);
+        renderStaticResult(view, machineResult, view.syncedReelPositions);
+        view.hasHydratedResult = true;
+        return;
+      }
+      if (suppressAnimation) {
+        if (machineResult && machineResult.event_id) {
+          view.lastAnimatedEventId = machineResult.event_id;
+        }
+        renderBreakdown(view, machineResult);
+        renderStaticResult(view, machineResult, view.syncedReelPositions);
+        return;
+      }
       const shouldDelayBreakdown =
         Boolean(machineResult && machineResult.did_spin && machineResult.animation_enabled) &&
         (machineResult.event_id !== view.lastAnimatedEventId ||

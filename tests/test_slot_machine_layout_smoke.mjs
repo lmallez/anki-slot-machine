@@ -329,6 +329,74 @@ instance.syncState({
   balance: "103.45",
   machines: [
     { key: "alpha", label: "Alpha" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "settled-1",
+    machine_results: [
+      {
+        event_id: "settled-1",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+    ],
+  },
+});
+
+assert.equal(animationFrames.length, 0, "initial sync should not replay an old spin");
+
+instance.syncState({
+  balance: "103.45",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "settled-1",
+    machine_results: [
+      {
+        event_id: "settled-1",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+    ],
+  },
+});
+
+assert.equal(document.body.children.length, 4);
+const alphaRoot = document.body.children[2];
+const betaRoot = document.body.children[3];
+assert.equal(alphaRoot.style.left, "40px");
+assert.equal(alphaRoot.style.top, "50px");
+assert.equal(betaRoot.style.left, "80px");
+assert.equal(betaRoot.style.top, "90px");
+
+const alphaReels = alphaRoot.querySelectorAll("[data-slot-reel]");
+const betaReels = betaRoot.querySelectorAll("[data-slot-reel]");
+assert.equal(alphaReels.length, 3);
+assert.equal(betaReels.length, 3);
+assert.equal(animationFrames.length, 0, "adding a machine should not animate an old result");
+
+instance.syncState({
+  balance: "103.45",
+  machines: [
+    { key: "alpha", label: "Alpha" },
     { key: "beta", label: "Beta" },
   ],
   window_layouts: {
@@ -362,19 +430,6 @@ instance.syncState({
     ],
   },
 });
-
-assert.equal(document.body.children.length, 4);
-const alphaRoot = document.body.children[2];
-const betaRoot = document.body.children[3];
-assert.equal(alphaRoot.style.left, "40px");
-assert.equal(alphaRoot.style.top, "50px");
-assert.equal(betaRoot.style.left, "80px");
-assert.equal(betaRoot.style.top, "90px");
-
-const alphaReels = alphaRoot.querySelectorAll("[data-slot-reel]");
-const betaReels = betaRoot.querySelectorAll("[data-slot-reel]");
-assert.equal(alphaReels.length, 3);
-assert.equal(betaReels.length, 3);
 
 flushAnimationFrame();
 assertNoHighlight(alphaReels);
@@ -512,6 +567,49 @@ assertNoHighlight(betaReels);
 flushAnimationFrames();
 assertPairHighlight(alphaReels, [0, 2]);
 assertTripleHighlight(betaReels);
+
+instance.syncState({
+  balance: "103.45",
+  suppress_animation: true,
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-undo",
+    machine_results: [
+      {
+        event_id: "evt-undo",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+      {
+        event_id: "evt-undo",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+    ],
+  },
+});
+
+assert.equal(animationFrames.length, 0, "undo refresh should not replay a spin");
+assertTripleHighlight(alphaReels);
+assertPairHighlight(betaReels, [0, 2]);
 
 instance.syncState({
   balance: "104.10",

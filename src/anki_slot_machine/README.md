@@ -104,7 +104,7 @@ It just runs the profiles you give it.
 
 ## Short Changelog
 
-- `v0.0.6` Real reel rotation, smoother visual reel mix, and better spin timing/feedback.
+- `v0.0.6` Real reel rotation, smoother reel visuals, better timing, and no replayed spins on restore.
 - `v0.0.5` Multi-slot support with one shared bankroll and quick slot controls.
 - `v0.0.4` Stats window, better history tracking, and stronger layout/state handling.
 - `v0.0.3` Draggable, resizable slot window with saved layout.

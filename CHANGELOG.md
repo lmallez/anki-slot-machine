@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   protection, and delayed payout/highlight feedback until settle.
 - Mixed the reel strip into a stable backend-defined order that preserves the
   configured face counts while reducing visible 3x3 clumping.
+- Stopped replaying old spins on startup, slot-window creation, and undo
+  refreshes.
 
 ## [v0.0.5] - 2026-04-09
 
