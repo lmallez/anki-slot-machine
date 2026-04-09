@@ -182,13 +182,12 @@ def _history_block(event: dict) -> str:
     details = f"{timestamp} · {recency} · {reels}"
     if calculation:
         details = f"{details} · {calculation}"
-    return (
-        f"[{answer}] {change} -> {balance} · {commentary}\n"
-        f"{details}"
-    )
+    return f"[{answer}] {change} -> {balance} · {commentary}\n" f"{details}"
 
 
-def _history_signature(events: list[dict]) -> tuple[tuple[str, str, str, str, str, str], ...]:
+def _history_signature(
+    events: list[dict],
+) -> tuple[tuple[str, str, str, str, str, str], ...]:
     return tuple(
         (
             str(event.get("event_id", "")),
@@ -308,7 +307,9 @@ class RollHistoryGraph(QWidget):
         if not self._values:
             return []
 
-        _width, _height, plot_left, plot_top, plot_width, plot_bottom = self._plot_metrics()
+        _width, _height, plot_left, plot_top, plot_width, plot_bottom = (
+            self._plot_metrics()
+        )
         plot_height = plot_bottom - plot_top
 
         min_value = min(min(self._values), 0.0)
@@ -339,17 +340,11 @@ class RollHistoryGraph(QWidget):
             QToolTip.hideText()
             return
 
-        _width, _height, plot_left, plot_top, plot_width, plot_bottom = self._plot_metrics()
-        x_pos = (
-            event.position().x()
-            if hasattr(event, "position")
-            else event.pos().x()
+        _width, _height, plot_left, plot_top, plot_width, plot_bottom = (
+            self._plot_metrics()
         )
-        y_pos = (
-            event.position().y()
-            if hasattr(event, "position")
-            else event.pos().y()
-        )
+        x_pos = event.position().x() if hasattr(event, "position") else event.pos().x()
+        y_pos = event.position().y() if hasattr(event, "position") else event.pos().y()
         if (
             x_pos < plot_left
             or x_pos > plot_left + plot_width
@@ -365,7 +360,8 @@ class RollHistoryGraph(QWidget):
         points = self._plot_points()
         index = min(
             range(len(points)),
-            key=lambda idx: abs(points[idx][0] - x_pos) + abs(points[idx][1] - y_pos) * 0.35,
+            key=lambda idx: abs(points[idx][0] - x_pos)
+            + abs(points[idx][1] - y_pos) * 0.35,
         )
         if self._hover_index != index:
             self._hover_index = index
@@ -391,7 +387,9 @@ class RollHistoryGraph(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-        width, height, plot_left, plot_top, plot_width, plot_bottom = self._plot_metrics()
+        width, height, plot_left, plot_top, plot_width, plot_bottom = (
+            self._plot_metrics()
+        )
         plot_height = plot_bottom - plot_top
 
         painter.fillRect(0, 0, width, height, QColor("#101010"))
@@ -461,7 +459,9 @@ class RollHistoryGraph(QWidget):
 
         painter.setPen(QPen(QColor("#f2f2ed"), 1))
         painter.drawText(plot_left, plot_top + 14, f"HIGH {self._high_value:+.2f}")
-        painter.drawText(plot_left + plot_width - 92, plot_top + 14, f"NOW {self._latest_value:+.2f}")
+        painter.drawText(
+            plot_left + plot_width - 92, plot_top + 14, f"NOW {self._latest_value:+.2f}"
+        )
         painter.drawText(plot_left, plot_bottom + 18, f"LOW  {self._low_value:+.2f}")
 
     def pulse_last_point(self) -> None:
@@ -729,8 +729,14 @@ class SlotMachineStatsDialog(QDialog):
         )
 
     def _flash_live_surfaces(self, snapshot: dict) -> None:
-        tone = _tone_for_money(str((snapshot.get("last_result") or {}).get("net_change", "0")))
-        border = "#2e8a3d" if tone == "positive" else "#6f1d1e" if tone == "negative" else "#8f6825"
+        tone = _tone_for_money(
+            str((snapshot.get("last_result") or {}).get("net_change", "0"))
+        )
+        border = (
+            "#2e8a3d"
+            if tone == "positive"
+            else "#6f1d1e" if tone == "negative" else "#8f6825"
+        )
         self._flash_frame(self.signal_bar, border)
         self._flash_frame(self.chart_frame, border)
         self._flash_frame(self.feed_frame, border)
@@ -755,7 +761,9 @@ class SlotMachineStatsDialog(QDialog):
         last_event_id = str(last_result.get("event_id", "")).strip() or None
         had_previous_event = self._last_event_id is not None
         event_changed = bool(
-            last_event_id and had_previous_event and last_event_id != self._last_event_id
+            last_event_id
+            and had_previous_event
+            and last_event_id != self._last_event_id
         )
 
         balance_color = _money_color(str(snapshot.get("today_net", "0")))

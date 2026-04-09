@@ -46,7 +46,9 @@ def _net_total(events: list[dict]) -> Decimal:
     return total
 
 
-def _trend_payload(current_events: list[dict], previous_events: list[dict]) -> dict[str, str]:
+def _trend_payload(
+    current_events: list[dict], previous_events: list[dict]
+) -> dict[str, str]:
     current_total = _net_total(current_events)
     previous_total = _net_total(previous_events)
     current_count = max(1, len(current_events))
@@ -81,7 +83,9 @@ def _streak_context(streak: int) -> str:
     return "on fire"
 
 
-def _session_temperature(*, today_net: Decimal, recent_trend: str, current_streak: int) -> str:
+def _session_temperature(
+    *, today_net: Decimal, recent_trend: str, current_streak: int
+) -> str:
     if current_streak >= 4 and today_net >= Decimal("0"):
         return "heating up"
     if today_net > TREND_EPSILON and recent_trend == "up":
@@ -108,7 +112,9 @@ def _volatility_label(
     return "balanced"
 
 
-def _recent_summary(events: list[dict], *, window_size: int, decimal_places: int) -> dict:
+def _recent_summary(
+    events: list[dict], *, window_size: int, decimal_places: int
+) -> dict:
     current_events = _recent_events(events, window_size)
     previous_events = _previous_recent_events(events, window_size)
     trend = _trend_payload(current_events, previous_events)
