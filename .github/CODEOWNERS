@@ -1,0 +1,6 @@
+# Default reviewer for protected files.
+
+.github/workflows/* @lmallez
+build.sh @lmallez
+install.sh @lmallez
+src/anki_slot_machine/manifest.json @lmallez
