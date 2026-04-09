@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.6] - 2026-04-09
+
+- Switched reel resolution to a position-first backend model so `game.py`
+  chooses real landing positions and derives visible symbols from those stops.
+- Added real reel-track rotation with config-driven timing, same-event refresh
+  protection, and delayed payout/highlight feedback until settle.
+- Mixed the reel strip into a stable backend-defined order that preserves the
+  configured face counts while reducing visible 3x3 clumping.
+
 ## [v0.0.5] - 2026-04-09
 
 - Added multi-slot support with a shared bankroll and stats.

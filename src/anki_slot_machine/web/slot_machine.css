@@ -53,6 +53,7 @@
   --slot-machine-breakdown-width: 192px;
   --slot-machine-amount-top: 76px;
   --slot-machine-particles-top: 94px;
+  --slot-machine-reel-gap: 18px;
 }
 
 .anki-slot-machine-control-panel {
@@ -308,6 +309,8 @@
   border: 2px solid #3a2b16;
   background: #060606;
   position: relative;
+  overflow: hidden;
+  --slot-track-offset: 0px;
 }
 
 .anki-slot-machine-reel.is-bright {
@@ -318,6 +321,32 @@
 .anki-slot-machine-reel.is-pair {
   border-color: var(--gold);
   background: #101010;
+}
+
+.anki-slot-machine-reel-track {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--slot-machine-reel-gap);
+  margin-top: calc(var(--slot-machine-symbol-size) / -2);
+  transform: translate(-50%, var(--slot-track-offset));
+  will-change: transform;
+}
+
+.anki-slot-machine-reel-cell {
+  width: var(--slot-machine-symbol-size);
+  height: var(--slot-machine-symbol-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.anki-slot-machine-reel.is-spinning .anki-slot-machine-symbol-sprite {
+  filter: blur(0.45px);
 }
 
 .anki-slot-machine-symbol {

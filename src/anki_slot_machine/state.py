@@ -26,6 +26,29 @@ DECIMAL_STATE_FIELDS = (
 )
 
 
+def _normalize_reel_positions_entry(value) -> list[int] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    normalized: list[int] = []
+    for item in value[:3]:
+        try:
+            normalized.append(max(0, int(item)))
+        except (TypeError, ValueError):
+            normalized.append(0)
+    return normalized
+
+
+def _normalize_reel_positions_map(payload) -> dict[str, list[int]]:
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, list[int]] = {}
+    for key, value in payload.items():
+        entry = _normalize_reel_positions_entry(value)
+        if entry is not None:
+            normalized[str(key)] = entry
+    return normalized
+
+
 def _backup_path(path: Path) -> Path:
     return path.with_suffix(f"{path.suffix}.bak")
 
@@ -69,6 +92,11 @@ def _normalize_event_payload(
             ]
             if machine_result is not None
         ]
+    for field_name in ("reel_start_positions", "reel_positions", "reel_step_counts"):
+        if field_name in normalized:
+            entry = _normalize_reel_positions_entry(normalized.get(field_name))
+            if entry is not None:
+                normalized[field_name] = entry
     return normalized
 
 
@@ -141,6 +169,9 @@ def _normalize_state_snapshot_payload(
         payload.get("last_result"),
         decimal_places=decimal_places,
     )
+    normalized["reel_positions"] = _normalize_reel_positions_map(
+        payload.get("reel_positions"),
+    )
     return normalized
 
 
@@ -156,6 +187,7 @@ class SlotMachineState:
     daily_earnings: dict[str, Decimal] = field(default_factory=dict)
     history: list[dict] = field(default_factory=list)
     last_result: dict | None = None
+    reel_positions: dict[str, list[int]] = field(default_factory=dict)
     undo_history: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -206,6 +238,7 @@ class SlotMachineState:
                 data.get("last_result"),
                 decimal_places=config.decimal_places,
             ),
+            reel_positions=_normalize_reel_positions_map(data.get("reel_positions")),
             undo_history=[
                 normalized
                 for item in data.get("undo_history") or []
@@ -236,6 +269,7 @@ class SlotMachineState:
             },
             "history": self.history,
             "last_result": self.last_result,
+            "reel_positions": self.reel_positions,
         }
 
     def restore_review_snapshot(
@@ -254,6 +288,7 @@ class SlotMachineState:
         self.daily_earnings = restored.daily_earnings
         self.history = restored.history
         self.last_result = restored.last_result
+        self.reel_positions = restored.reel_positions
 
     def to_dict(self, decimal_places: int) -> dict:
         return {
@@ -270,6 +305,7 @@ class SlotMachineState:
             },
             "history": self.history,
             "last_result": self.last_result,
+            "reel_positions": self.reel_positions,
             "undo_history": self.undo_history,
         }
 

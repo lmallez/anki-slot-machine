@@ -13,6 +13,7 @@ from test_support import install_stubs
 install_stubs()
 
 import anki_slot_machine.config as config_module
+import anki_slot_machine.game as game_module
 from anki_slot_machine.config import load_config
 from anki_slot_machine.service import SlotMachineService
 from anki_slot_machine.state import SlotMachineState, StateRepository
@@ -58,6 +59,11 @@ def make_multi_machine_config(*, profile_overrides=None, **config_overrides):
             {"key": "beta", "label": "Beta"},
         ]
         return load_config.__globals__["config_from_raw"](raw)
+
+
+def reel_positions_for_symbols(machine, symbols):
+    strip = game_module.build_reel_strip(machine)
+    return tuple(strip.index(symbol) for symbol in symbols)
 
 
 class StateRepositoryTests(unittest.TestCase):
@@ -185,13 +191,18 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["balance"], "100.00")
         self.assertNotIn("fixed_bet_amount", snapshot)
         self.assertNotIn("default_slot_multiplier", snapshot)
+        self.assertIn("reel_strip", snapshot["machines"][0])
+        self.assertIn("reel_positions", snapshot["machines"][0])
+        self.assertEqual(len(snapshot["machines"][0]["reel_positions"]), 3)
+        self.assertEqual(snapshot["spin_animation_duration_ms"], 750)
 
     def test_loss_updates_balance_and_stats_without_touching_card_data(self) -> None:
+        config = make_config()
         with tempfile.TemporaryDirectory() as tmp_dir:
-            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_2", "SLOT_5", "SLOT_2"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_5", "SLOT_2")),
             ):
                 result = service.apply_review(card_id=55, ease=1, button_count=4)
             snapshot = service.stats_snapshot()
@@ -219,8 +230,8 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_3", "SLOT_3", "SLOT_3"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")),
             ):
                 result = service.apply_review(card_id=99, ease=3, button_count=4)
             snapshot = service.stats_snapshot()
@@ -234,19 +245,42 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["history"][0]["history_format_version"], 2)
         self.assertIn("slot_instance_key", snapshot["history"][0])
         self.assertIn("slot_instance_label", snapshot["history"][0])
+        self.assertIn("reel_positions", snapshot["history"][0])
+
+    def test_snapshot_tracks_current_reel_positions_for_machine(self) -> None:
+        config = make_config()
+        strip = game_module.build_reel_strip(config.machines[0])
+        reel_positions = (
+            strip.index("SLOT_3"),
+            strip.index("SLOT_3"),
+            strip.index("SLOT_3"),
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions,
+            ):
+                result = service.apply_review(card_id=99, ease=3, button_count=4)
+            snapshot = service.snapshot()
+
+        self.assertEqual(
+            snapshot["machines"][0]["reel_positions"],
+            list(result.reel_positions),
+        )
 
     def test_stats_snapshot_exposes_graph_history_in_oldest_to_newest_order(self) -> None:
         config = make_config()
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_2", "SLOT_2", "SLOT_3"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_2", "SLOT_3")),
             ):
                 first = service.apply_review(card_id=1, ease=3, button_count=4)
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
             ):
                 second = service.apply_review(card_id=2, ease=3, button_count=4)
             snapshot = service.stats_snapshot()
@@ -259,13 +293,13 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_2", "SLOT_2", "SLOT_3"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_2", "SLOT_3")),
             ):
                 service.apply_review(card_id=1, ease=3, button_count=4)
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
             ):
                 service.apply_review(card_id=2, ease=4, button_count=4)
             service.apply_review(card_id=3, ease=2, button_count=4)
@@ -301,11 +335,11 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
+                "anki_slot_machine.game.spin_reel_positions",
                 side_effect=[
-                    ("SLOT_2", "SLOT_2", "SLOT_4"),
-                    ("SLOT_5", "SLOT_5", "SLOT_5"),
-                    ("SLOT_1", "SLOT_3", "SLOT_4"),
+                    reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_2", "SLOT_4")),
+                    reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
+                    reel_positions_for_symbols(config.machines[0], ("SLOT_1", "SLOT_3", "SLOT_4")),
                 ],
             ):
                 service.apply_review(card_id=1, ease=3, button_count=4)
@@ -329,13 +363,13 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
             ):
                 service.apply_review(card_id=1, ease=4, button_count=4)
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_2", "SLOT_3", "SLOT_4"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_3", "SLOT_4")),
             ):
                 service.apply_review(card_id=2, ease=3, button_count=4)
             service.apply_review(card_id=3, ease=1, button_count=4)
@@ -362,8 +396,8 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_4", "SLOT_4", "SLOT_4"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_4", "SLOT_4", "SLOT_4")),
             ):
                 result = service.apply_review(card_id=77, ease=4, button_count=4)
             snapshot = service.stats_snapshot()
@@ -380,10 +414,10 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
+                "anki_slot_machine.game.spin_reel_positions",
                 side_effect=[
-                    ("SLOT_1", "SLOT_1", "SLOT_1"),
-                    ("SLOT_2", "SLOT_5", "SLOT_2"),
+                    reel_positions_for_symbols(config.machines[0], ("SLOT_1", "SLOT_1", "SLOT_1")),
+                    reel_positions_for_symbols(config.machines[1], ("SLOT_2", "SLOT_5", "SLOT_2")),
                 ],
             ):
                 result = service.apply_review(card_id=88, ease=3, button_count=4)
@@ -402,10 +436,10 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
-                "anki_slot_machine.game.spin_reels",
+                "anki_slot_machine.game.spin_reel_positions",
                 side_effect=[
-                    ("SLOT_4", "SLOT_4", "SLOT_4"),
-                    ("SLOT_4", "SLOT_4", "SLOT_4"),
+                    reel_positions_for_symbols(config.machines[0], ("SLOT_4", "SLOT_4", "SLOT_4")),
+                    reel_positions_for_symbols(config.machines[1], ("SLOT_4", "SLOT_4", "SLOT_4")),
                 ],
             ):
                 result = service.apply_review(card_id=5, ease=1, button_count=4)
@@ -426,8 +460,8 @@ class ServiceTests(unittest.TestCase):
             expected_snapshot = service.snapshot()
             expected_stats = service.stats_snapshot()
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_3", "SLOT_3", "SLOT_3"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")),
             ):
                 service.apply_review(card_id=12, ease=3, button_count=4)
 
@@ -458,9 +492,10 @@ class ServiceTests(unittest.TestCase):
                 make_config(starting_balance=2),
                 Path(tmp_dir) / "state.json",
             )
+            config = service.config()
             with patch(
-                "anki_slot_machine.game.spin_reels",
-                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
             ):
                 result = service.apply_review(card_id=3, ease=1, button_count=4)
             snapshot = service.snapshot()

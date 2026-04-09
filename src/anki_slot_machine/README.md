@@ -20,7 +20,8 @@ It **does** make you want to press "Good" just one more time.
 
 ## ✨ Features
 
-- 🎰 Real 3-reel slot result tied to the visible outcome
+- 🎰 Real slot-machine style spin that feels tied to the result
+- 🎞️ Faster reel animation with a clean slowdown at the end
 - 🎰 Multiple independent slot windows can spin at once
 - 💸 Persistent fake-money balance across review sessions
 - 📈 Live terminal-style stats window with a PnL chart, tape feed, and quant sidebar
@@ -87,8 +88,11 @@ Like life. But compressed into 300ms.
 - The add-on loads one or more slot profile JSON files
 - Each visible machine uses its own profile
 - All machines share one bankroll, one streak, and one stats feed
-- Reel probabilities come from the face counts
-- Pairs and triples are evaluated from a real 3-reel result
+- Reel probabilities come directly from the configured face counts
+- The backend builds a real reel strip from those faces and keeps reel positions per machine
+- Visible reel symbols are derived from real backend stop positions
+- The reel strip is mixed into a stable order so the visible 3x3 window feels less clumpy without changing the configured probabilities
+- Pairs and triples are evaluated from a real 3-reel backend result
 - The odds page computes both per-machine odds and aggregate expected payout
 
 Important:
@@ -100,6 +104,7 @@ It just runs the profiles you give it.
 
 ## Short Changelog
 
+- `v0.0.6` Real reel rotation, smoother visual reel mix, and better spin timing/feedback.
 - `v0.0.5` Multi-slot support with one shared bankroll and quick slot controls.
 - `v0.0.4` Stats window, better history tracking, and stronger layout/state handling.
 - `v0.0.3` Draggable, resizable slot window with saved layout.
@@ -114,6 +119,7 @@ It just runs the profiles you give it.
 {
   "starting_balance": 100,
   "decimal_places": 2,
+  "spin_animation_duration_ms": 500,
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
@@ -162,6 +168,7 @@ Useful intuition:
 - `faces` → how often each symbol shows up on one reel  
 - `pair_multipliers` → what an exact pair pays  
 - `triple_multipliers` → what a triple pays  
+- `spin_animation_duration_ms` → total reel animation budget, capped at `750`  
 - `slot_profile_path` → which shared profile every machine window loads  
 - `machines` → which machine windows appear on screen  
 

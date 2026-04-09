@@ -44,6 +44,7 @@ DEFAULT_MACHINE_KEY = "main"
 DEFAULT_HISTORY_LIMIT = 1000
 DEFAULT_MILESTONE_THRESHOLDS = (250, 500, 1000, 2500)
 DEFAULT_DECIMAL_PLACES = 2
+DEFAULT_SPIN_ANIMATION_DURATION_MS = 750
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class SlotMachineConfig:
     slot_double_multipliers: dict[str, Decimal]
     slot_triple_multipliers: dict[str, Decimal]
     slot_probability_summary: SlotProbabilitySummary
+    spin_animation_duration_ms: int
     history_limit: int
     milestone_thresholds: tuple[int, ...]
 
@@ -130,6 +132,14 @@ def _load_slot_profile_path(raw_value) -> str:
         return DEFAULT_SLOT_PROFILE_PATH
     value = str(raw_value).strip()
     return value or DEFAULT_SLOT_PROFILE_PATH
+
+
+def _spin_animation_duration_ms(raw_value) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = DEFAULT_SPIN_ANIMATION_DURATION_MS
+    return max(150, min(750, value))
 
 
 def _default_machine_label(profile_name: str, index: int) -> str:
@@ -433,6 +443,9 @@ def config_from_raw(
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
         slot_probability_summary=probability_summary,
+        spin_animation_duration_ms=_spin_animation_duration_ms(
+            raw.get("spin_animation_duration_ms")
+        ),
         history_limit=DEFAULT_HISTORY_LIMIT,
         milestone_thresholds=DEFAULT_MILESTONE_THRESHOLDS,
     )

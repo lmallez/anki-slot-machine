@@ -16,6 +16,10 @@ class ClassList {
     names.forEach((name) => this._classes.delete(name));
   }
 
+  contains(name) {
+    return this._classes.has(name);
+  }
+
   toggle(name, force) {
     if (force === true) {
       this._classes.add(name);
@@ -131,8 +135,8 @@ class FakeElement {
 
     const reels = Array.from({ length: 3 }, () => {
       const reel = new FakeElement("div");
-      const symbol = new FakeElement("div");
-      reel._selectorMap.set("[data-slot-symbol]", symbol);
+      const track = new FakeElement("div");
+      reel._selectorMap.set("[data-slot-track]", track);
       return reel;
     });
 
@@ -155,6 +159,10 @@ class FakeElement {
 
 const messages = [];
 const localStorageMap = new Map();
+const animationFrames = [];
+const cancelledAnimationFrames = new Set();
+let nextAnimationFrameId = 1;
+let animationClock = 0;
 
 const document = {
   readyState: "complete",
@@ -183,6 +191,11 @@ const windowObject = {
   document,
   innerWidth: 1440,
   innerHeight: 900,
+  performance: {
+    now() {
+      return animationClock;
+    },
+  },
   localStorage: {
     getItem(key) {
       return localStorageMap.has(key) ? localStorageMap.get(key) : null;
@@ -192,6 +205,15 @@ const windowObject = {
     },
   },
   addEventListener() {},
+  requestAnimationFrame(callback) {
+    const id = nextAnimationFrameId;
+    nextAnimationFrameId += 1;
+    animationFrames.push({ id, callback });
+    return id;
+  },
+  cancelAnimationFrame(id) {
+    cancelledAnimationFrames.add(id);
+  },
   setTimeout() {
     return 1;
   },
@@ -232,6 +254,51 @@ function currentOpenLayout(element) {
     top: element.style.top,
     hidden: element.classList.toggle("is-closed", false),
   };
+}
+
+function flushAnimationFrames(limit = 200) {
+  let frameCount = 0;
+  while (animationFrames.length > 0) {
+    const frame = animationFrames.shift();
+    if (cancelledAnimationFrames.has(frame.id)) {
+      continue;
+    }
+    animationClock += 16;
+    frame.callback(animationClock);
+    frameCount += 1;
+    assert.ok(frameCount <= limit, "animation frames should settle within test budget");
+  }
+}
+
+function flushAnimationFrame() {
+  assert.ok(animationFrames.length > 0, "expected a queued animation frame");
+  const frame = animationFrames.shift();
+  if (cancelledAnimationFrames.has(frame.id)) {
+    return flushAnimationFrame();
+  }
+  animationClock += 16;
+  frame.callback(animationClock);
+}
+
+function assertTripleHighlight(reels) {
+  assert.equal(reels.length, 3);
+  assert.ok(reels.every((reel) => reel.classList.contains("is-bright")));
+  assert.ok(reels.every((reel) => !reel.classList.contains("is-pair")));
+}
+
+function assertPairHighlight(reels, matchingIndexes) {
+  assert.equal(reels.length, 3);
+  reels.forEach((reel, index) => {
+    assert.equal(reel.classList.contains("is-pair"), matchingIndexes.includes(index));
+    assert.equal(reel.classList.contains("is-bright"), false);
+  });
+}
+
+function assertNoHighlight(reels) {
+  reels.forEach((reel) => {
+    assert.equal(reel.classList.contains("is-bright"), false);
+    assert.equal(reel.classList.contains("is-pair"), false);
+  });
 }
 
 instance.syncState({
@@ -303,3 +370,192 @@ assert.equal(alphaRoot.style.left, "40px");
 assert.equal(alphaRoot.style.top, "50px");
 assert.equal(betaRoot.style.left, "80px");
 assert.equal(betaRoot.style.top, "90px");
+
+const alphaReels = alphaRoot.querySelectorAll("[data-slot-reel]");
+const betaReels = betaRoot.querySelectorAll("[data-slot-reel]");
+assert.equal(alphaReels.length, 3);
+assert.equal(betaReels.length, 3);
+
+flushAnimationFrame();
+assertNoHighlight(alphaReels);
+assertNoHighlight(betaReels);
+
+instance.syncState({
+  balance: "103.45",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-1",
+    machine_results: [
+      {
+        event_id: "evt-1",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+      {
+        event_id: "evt-1",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+    ],
+  },
+});
+
+assertNoHighlight(alphaReels);
+assertNoHighlight(betaReels);
+assert.ok(animationFrames.length > 0, "same-event refresh should not cancel the in-flight spin");
+
+flushAnimationFrames();
+assertTripleHighlight(alphaReels);
+assertPairHighlight(betaReels, [0, 2]);
+
+instance.syncState({
+  balance: "103.45",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-1",
+    machine_results: [
+      {
+        event_id: "evt-1",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+      {
+        event_id: "evt-1",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+    ],
+  },
+});
+
+assertTripleHighlight(alphaReels);
+assertPairHighlight(betaReels, [0, 2]);
+
+instance.syncState({
+  balance: "106.20",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-2",
+    machine_results: [
+      {
+        event_id: "evt-2",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+      {
+        event_id: "evt-2",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "15.00",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_3", "SLOT_3", "SLOT_3"],
+        line_hit: true,
+      },
+    ],
+  },
+});
+
+flushAnimationFrame();
+assertNoHighlight(alphaReels);
+assertNoHighlight(betaReels);
+
+flushAnimationFrames();
+assertPairHighlight(alphaReels, [0, 2]);
+assertTripleHighlight(betaReels);
+
+instance.syncState({
+  balance: "104.10",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-3",
+    machine_results: [
+      {
+        event_id: "evt-3",
+        machine_key: "alpha",
+        answer_key: "again",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+      {
+        event_id: "evt-3",
+        machine_key: "beta",
+        answer_key: "again",
+        payout: "15.00",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_3", "SLOT_3", "SLOT_3"],
+        line_hit: true,
+        matched_symbol: "SLOT_3",
+      },
+    ],
+  },
+});
+
+flushAnimationFrame();
+assertNoHighlight(alphaReels);
+assertNoHighlight(betaReels);
+
+flushAnimationFrames();
+assertPairHighlight(alphaReels, [0, 2]);
+assertTripleHighlight(betaReels);

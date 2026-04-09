@@ -8,6 +8,8 @@ changes Anki scheduling, intervals, or note data.
 - `starting_balance`: first balance for a fresh profile state file.
 - `decimal_places`: how many decimals are used for balances, payouts, and
   displayed multipliers.
+- `spin_animation_duration_ms`: total reel animation budget in milliseconds,
+  clamped between `150` and `750`.
 - `slot_profile_path`: path to the shared slot profile JSON file, relative to
   the add-on root unless you provide an absolute path.
 - `machines`: list of slot machine windows to show in the reviewer. Each item
@@ -20,6 +22,7 @@ Example config:
 {
   "starting_balance": 100,
   "decimal_places": 2,
+  "spin_animation_duration_ms": 500,
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
@@ -68,9 +71,15 @@ The profile file is the source of truth for the slot:
 }
 ```
 
-- `faces`: how many times each symbol appears on a reel strip.
+- `faces`: how many times each symbol appears on a reel strip. These counts are
+  the real probability source for the machine.
 - `pair_multipliers`: reward for an exact pair of that symbol.
 - `triple_multipliers`: reward for a triple of that symbol.
+
+The backend builds the reel strip from `faces`, keeps the real reel positions,
+and derives the visible symbols from those backend stop positions. The strip is
+mixed into a stable order to avoid long visible clumps of identical neighbors,
+but the configured face counts and resulting probabilities stay the same.
 
 ## Reward rules
 
@@ -87,6 +96,7 @@ The profile file is the source of truth for the slot:
 
 - The slot is a real 3-reel model with 3 independent draws.
 - Reel probabilities come only from `faces`.
+- The backend owns reel-strip order, reel positions, and final stops.
 - For each symbol:
   - `p = faces / total_faces`
   - `P(pair) = 3 * p^2 * (1 - p)`

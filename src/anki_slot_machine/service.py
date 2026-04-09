@@ -6,7 +6,13 @@ from decimal import Decimal
 
 from .config import SlotMachineConfig, load_config
 from .decimal_utils import format_decimal, quantize_decimal
-from .game import RoundSpinResult, answer_key_for_rating, build_round_result
+from .game import (
+    RoundSpinResult,
+    answer_key_for_rating,
+    build_reel_strip,
+    build_round_result,
+    default_reel_positions,
+)
 from .runtime import addon_instance_key, addon_package_name
 from .state import SlotMachineState, StateRepository
 
@@ -208,18 +214,26 @@ class SlotMachineService:
             if state.balance >= Decimal(threshold)
         )
         tier_name = MILESTONE_NAMES[min(unlocked_count, len(MILESTONE_NAMES) - 1)]
-
-        return {
-            "balance": format_decimal(state.balance, config.decimal_places),
-            "last_result": state.last_result,
-            "machines": [
+        machine_payload = []
+        for machine in config.machines:
+            reel_positions = state.reel_positions.get(machine.key)
+            if not isinstance(reel_positions, list) or len(reel_positions) != 3:
+                reel_positions = list(default_reel_positions(machine))
+            machine_payload.append(
                 {
                     "key": machine.key,
                     "label": machine.label,
                     "profile_name": machine.slot_profile_name,
+                    "reel_strip": list(build_reel_strip(machine)),
+                    "reel_positions": reel_positions,
                 }
-                for machine in config.machines
-            ],
+            )
+
+        return {
+            "balance": format_decimal(state.balance, config.decimal_places),
+            "last_result": state.last_result,
+            "machines": machine_payload,
+            "spin_animation_duration_ms": config.spin_animation_duration_ms,
             "card_id": card_id,
             "answer_button_count": answer_button_count,
             "tier_name": tier_name,
@@ -254,7 +268,22 @@ class SlotMachineService:
             bet=bet,
             balance_before=state.balance,
             rng=self._rng,
+            previous_reel_positions_by_machine=state.reel_positions,
         )
+
+        next_reel_positions = {}
+        for machine_result in result.machine_results:
+            machine_key = str(machine_result.get("machine_key", "")).strip()
+            reel_positions = machine_result.get("reel_positions")
+            if (
+                machine_key
+                and isinstance(reel_positions, list)
+                and len(reel_positions) == 3
+            ):
+                next_reel_positions[machine_key] = [
+                    int(position) for position in reel_positions
+                ]
+        state.reel_positions = next_reel_positions
 
         state.balance = result.balance_after
         state.spins += sum(

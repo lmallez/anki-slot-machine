@@ -164,6 +164,16 @@ class ConfigProfileTests(unittest.TestCase):
         self.assertEqual(config.slot_double_multipliers["SLOT_2"], Decimal("1.1"))
         self.assertEqual(config.slot_triple_multipliers["SLOT_4"], Decimal("27.8"))
 
+    def test_spin_animation_duration_is_loaded_and_clamped(self) -> None:
+        self.assertEqual(
+            load_test_config(spin_animation_duration_ms=640).spin_animation_duration_ms,
+            640,
+        )
+        self.assertEqual(
+            load_test_config(spin_animation_duration_ms=999).spin_animation_duration_ms,
+            750,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

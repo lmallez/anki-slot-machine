@@ -88,10 +88,28 @@ class ReelTests(unittest.TestCase):
                 }
             }
         )
-        self.assertEqual(
-            game_module.build_reel_strip(config),
-            ("SLOT_1", "SLOT_1", "SLOT_2"),
+        strip = game_module.build_reel_strip(config)
+        self.assertCountEqual(strip, ("SLOT_1", "SLOT_1", "SLOT_2"))
+        self.assertEqual(game_module.build_reel_strip(config), strip)
+
+    def test_build_reel_strip_spreads_symbols_when_possible(self) -> None:
+        config = make_config(
+            profile_overrides={
+                "faces": {
+                    "SLOT_1": 2,
+                    "SLOT_2": 2,
+                    "SLOT_3": 1,
+                    "SLOT_4": 0,
+                    "SLOT_5": 0,
+                }
+            }
         )
+        strip = game_module.build_reel_strip(config)
+        self.assertCountEqual(strip, ("SLOT_1", "SLOT_1", "SLOT_2", "SLOT_2", "SLOT_3"))
+        self.assertTrue(
+            all(strip[index] != strip[index + 1] for index in range(len(strip) - 1))
+        )
+        self.assertNotEqual(strip[0], strip[-1])
 
     def test_shuffled_reel_strip_preserves_population(self) -> None:
         config = make_config(
@@ -114,6 +132,12 @@ class ReelTests(unittest.TestCase):
             "SLOT_3",
         )
 
+    def test_spin_reel_position_returns_index_from_strip(self) -> None:
+        self.assertEqual(
+            game_module.spin_reel_position(("SLOT_3",), rng=random.Random(1)),
+            0,
+        )
+
     def test_spin_reels_roll_three_independent_values(self) -> None:
         config = make_config(
             profile_overrides={
@@ -130,6 +154,48 @@ class ReelTests(unittest.TestCase):
             game_module.spin_reels(config, rng=random.Random(1)),
             ("SLOT_3", "SLOT_3", "SLOT_3"),
         )
+
+    def test_spin_reel_positions_follow_reel_strip_population(self) -> None:
+        config = make_config(
+            profile_overrides={
+                "faces": {
+                    "SLOT_1": 0,
+                    "SLOT_2": 0,
+                    "SLOT_3": 100,
+                    "SLOT_4": 0,
+                    "SLOT_5": 0,
+                }
+            }
+        )
+        positions = game_module.spin_reel_positions(config, rng=random.Random(1))
+        self.assertEqual(
+            game_module.visible_reels_for_positions(config, positions),
+            ("SLOT_3", "SLOT_3", "SLOT_3"),
+        )
+
+    def test_advance_reel_to_symbol_uses_real_strip_and_minimum_steps(self) -> None:
+        strip = ("SLOT_1", "SLOT_1", "SLOT_2", "SLOT_3")
+        end_position, step_count = game_module.advance_reel_to_symbol(
+            strip,
+            start_position=0,
+            target_symbol="SLOT_2",
+            min_steps=6,
+            rng=random.Random(1),
+        )
+        self.assertEqual(strip[end_position], "SLOT_2")
+        self.assertGreaterEqual(step_count, 6)
+
+    def test_advance_reel_to_position_preserves_backend_selected_stop(self) -> None:
+        strip = ("SLOT_1", "SLOT_1", "SLOT_2", "SLOT_3")
+        end_position, step_count = game_module.advance_reel_to_position(
+            strip,
+            start_position=0,
+            target_position=2,
+            min_steps=6,
+        )
+        self.assertEqual(end_position, 2)
+        self.assertEqual(strip[end_position], "SLOT_2")
+        self.assertGreaterEqual(step_count, 6)
 
 
 class RewardTests(unittest.TestCase):
@@ -207,10 +273,16 @@ class RewardTests(unittest.TestCase):
 
     def test_spin_result_for_again_spins_and_uses_loss_multiplier(self) -> None:
         config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_2", "SLOT_5", "SLOT_2"),
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,
@@ -235,10 +307,16 @@ class RewardTests(unittest.TestCase):
 
     def test_spin_result_for_again_cannot_take_balance_below_zero(self) -> None:
         config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_4"),
+            strip.index("SLOT_4"),
+            strip.index("SLOT_4"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_4", "SLOT_4", "SLOT_4"),
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,
@@ -270,12 +348,38 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.slot_bonus, Decimal("0.00"))
         self.assertIsNone(result.matched_symbol)
 
+    def test_spin_result_for_hard_preserves_reel_positions(self) -> None:
+        config = make_config()
+        previous_positions = (0, 35, 60)
+        result = game_module.build_spin_result(
+          config,
+          card_id=42,
+          answer_key="hard",
+          bet=Decimal("1.00"),
+          balance_before=Decimal("100.00"),
+          rng=random.Random(2),
+          previous_reel_positions=previous_positions,
+        )
+        self.assertEqual(result.reel_start_positions, previous_positions)
+        self.assertEqual(result.reel_positions, previous_positions)
+        self.assertEqual(result.reel_step_counts, (0, 0, 0))
+        self.assertEqual(
+            result.reels,
+            game_module.visible_reels_for_positions(config, previous_positions),
+        )
+
     def test_spin_result_for_good_uses_triple_multiplier(self) -> None:
         config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_3"),
+            strip.index("SLOT_3"),
+            strip.index("SLOT_3"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_3", "SLOT_3", "SLOT_3"),
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,
@@ -299,10 +403,16 @@ class RewardTests(unittest.TestCase):
 
     def test_spin_result_for_good_uses_double_multiplier(self) -> None:
         config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_2", "SLOT_5", "SLOT_2"),
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,
@@ -322,10 +432,16 @@ class RewardTests(unittest.TestCase):
 
     def test_spin_result_for_good_defaults_to_x0_when_reels_do_not_match(self) -> None:
         config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_1"),
+            strip.index("SLOT_3"),
+            strip.index("SLOT_2"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_1", "SLOT_3", "SLOT_2"),
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,
@@ -341,12 +457,48 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.payout, Decimal("0.00"))
         self.assertFalse(result.is_win)
 
-    def test_spin_result_for_easy_uses_double_base_times_multiplier(self) -> None:
+    def test_spin_result_tracks_reel_positions_for_real_rotation(self) -> None:
         config = make_config()
+        previous_positions = (0, 35, 60)
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
         with patch.object(
             game_module,
-            "spin_reels",
-            return_value=("SLOT_4", "SLOT_4", "SLOT_4"),
+            "spin_reel_positions",
+            return_value=reel_positions,
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="good",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("100.00"),
+                rng=random.Random(2),
+                previous_reel_positions=previous_positions,
+            )
+        self.assertEqual(result.reel_start_positions, previous_positions)
+        self.assertTrue(all(step_count > 0 for step_count in result.reel_step_counts))
+        self.assertEqual(
+            game_module.visible_reels_for_positions(config, result.reel_positions),
+            result.reels,
+        )
+
+    def test_spin_result_for_easy_uses_double_base_times_multiplier(self) -> None:
+        config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_4"),
+            strip.index("SLOT_4"),
+            strip.index("SLOT_4"),
+        )
+        with patch.object(
+            game_module,
+            "spin_reel_positions",
+            return_value=reel_positions,
         ):
             result = game_module.build_spin_result(
                 config,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import random
 from collections import Counter
 from dataclasses import dataclass
@@ -37,6 +38,9 @@ class SpinResult:
     line_hit: bool
     slot_multiplier: Decimal
     matched_symbol: str | None
+    reel_start_positions: tuple[int, int, int]
+    reel_positions: tuple[int, int, int]
+    reel_step_counts: tuple[int, int, int]
     animation_enabled: bool
     headline: str
     machine_key: str = ""
@@ -61,6 +65,9 @@ class SpinResult:
             "line_hit": self.line_hit,
             "slot_multiplier": format_decimal(self.slot_multiplier, decimal_places),
             "matched_symbol": self.matched_symbol,
+            "reel_start_positions": list(self.reel_start_positions),
+            "reel_positions": list(self.reel_positions),
+            "reel_step_counts": list(self.reel_step_counts),
             "animation_enabled": self.animation_enabled,
             "headline": self.headline,
         }
@@ -90,6 +97,9 @@ class RoundSpinResult:
     line_hit: bool
     slot_multiplier: Decimal
     matched_symbol: str | None
+    reel_start_positions: tuple[int, int, int]
+    reel_positions: tuple[int, int, int]
+    reel_step_counts: tuple[int, int, int]
     animation_enabled: bool
     headline: str
     machine_results: tuple[dict[str, object], ...]
@@ -113,6 +123,9 @@ class RoundSpinResult:
             "line_hit": self.line_hit,
             "slot_multiplier": format_decimal(self.slot_multiplier, decimal_places),
             "matched_symbol": self.matched_symbol,
+            "reel_start_positions": list(self.reel_start_positions),
+            "reel_positions": list(self.reel_positions),
+            "reel_step_counts": list(self.reel_step_counts),
             "animation_enabled": self.animation_enabled,
             "headline": self.headline,
             "machine_results": list(self.machine_results),
@@ -173,10 +186,58 @@ def weighted_symbol(
 def build_reel_strip(
     config: SlotMachineConfig | SlotMachineDefinition,
 ) -> tuple[str, ...]:
+    symbols = tuple(
+        symbol
+        for symbol in slot_symbols(config)
+        if max(0, config.slot_faces.get(symbol, 0)) > 0
+    )
+    if not symbols:
+        return (slot_symbols(config)[0],)
+
+    remaining = {symbol: max(0, config.slot_faces.get(symbol, 0)) for symbol in symbols}
+    seed = "|".join(
+        [
+            str(getattr(config, "slot_profile_name", "") or ""),
+            str(getattr(config, "slot_profile_path", "") or ""),
+            str(getattr(config, "key", "") or ""),
+        ]
+    )
+    symbol_order = {
+        symbol: int.from_bytes(
+            hashlib.sha256(f"{seed}:{symbol}".encode("utf-8")).digest()[:8],
+            "big",
+        )
+        for symbol in symbols
+    }
+
     strip: list[str] = []
-    for symbol in slot_symbols(config):
-        strip.extend([symbol] * max(0, config.slot_faces.get(symbol, 0)))
-    return tuple(strip) or (slot_symbols(config)[0],)
+    previous_symbol: str | None = None
+    total_faces = sum(remaining.values())
+    for _ in range(total_faces):
+        candidates = [
+            symbol
+            for symbol in symbols
+            if remaining[symbol] > 0 and symbol != previous_symbol
+        ]
+        if not candidates:
+            candidates = [symbol for symbol in symbols if remaining[symbol] > 0]
+        chosen = min(
+            candidates, key=lambda symbol: (-remaining[symbol], symbol_order[symbol])
+        )
+        strip.append(chosen)
+        remaining[chosen] -= 1
+        previous_symbol = chosen
+
+    if len(strip) > 1 and strip[0] == strip[-1]:
+        for index in range(len(strip) - 2, 0, -1):
+            candidate = strip[index]
+            before = strip[index - 1]
+            if candidate == strip[0] or before == strip[0]:
+                continue
+            strip[index], strip[-1] = strip[-1], strip[index]
+            break
+
+    return tuple(strip)
 
 
 def shuffled_reel_strip(
@@ -193,12 +254,123 @@ def spin_reel(strip: tuple[str, ...], *, rng: random.Random) -> str:
     return strip[rng.randrange(len(strip))]
 
 
+def spin_reel_position(strip: tuple[str, ...], *, rng: random.Random) -> int:
+    if not strip:
+        return 0
+    return rng.randrange(len(strip))
+
+
+def spin_reel_positions(
+    config: SlotMachineConfig | SlotMachineDefinition, *, rng: random.Random
+) -> tuple[int, int, int]:
+    strip = build_reel_strip(config)
+    return tuple(spin_reel_position(strip, rng=rng) for _ in range(3))
+
+
 def spin_reels(
     config: SlotMachineConfig | SlotMachineDefinition, *, rng: random.Random
 ) -> tuple[str, str, str]:
-    return tuple(
-        spin_reel(shuffled_reel_strip(config, rng=rng), rng=rng) for _ in range(3)
-    )
+    return visible_reels_for_positions(config, spin_reel_positions(config, rng=rng))
+
+
+def reel_symbol_at_position(strip: tuple[str, ...], position: int) -> str:
+    if not strip:
+        return "SLOT_1"
+    return strip[position % len(strip)]
+
+
+def default_reel_positions(
+    config: SlotMachineConfig | SlotMachineDefinition,
+) -> tuple[int, int, int]:
+    strip = build_reel_strip(config)
+    neutral = neutral_reels(config)
+    positions: list[int] = []
+    for symbol in neutral:
+        try:
+            positions.append(strip.index(symbol))
+        except ValueError:
+            positions.append(0)
+    return tuple(positions[:3])  # type: ignore[return-value]
+
+
+def normalize_reel_positions(
+    config: SlotMachineConfig | SlotMachineDefinition,
+    positions: tuple[int, int, int] | list[int] | None,
+) -> tuple[int, int, int]:
+    strip = build_reel_strip(config)
+    strip_length = max(1, len(strip))
+    if not isinstance(positions, (tuple, list)) or len(positions) != 3:
+        return default_reel_positions(config)
+    normalized: list[int] = []
+    for value in positions[:3]:
+        try:
+            normalized.append(int(value) % strip_length)
+        except (TypeError, ValueError):
+            normalized.append(0)
+    return tuple(normalized)  # type: ignore[return-value]
+
+
+def visible_reels_for_positions(
+    config: SlotMachineConfig | SlotMachineDefinition,
+    positions: tuple[int, int, int] | list[int] | None,
+) -> tuple[str, str, str]:
+    strip = build_reel_strip(config)
+    normalized = normalize_reel_positions(config, positions)
+    return tuple(reel_symbol_at_position(strip, position) for position in normalized)  # type: ignore[return-value]
+
+
+def advance_reel_to_symbol(
+    strip: tuple[str, ...],
+    *,
+    start_position: int,
+    target_symbol: str,
+    min_steps: int,
+    rng: random.Random,
+) -> tuple[int, int]:
+    if not strip:
+        return 0, max(0, int(min_steps))
+
+    normalized_start = start_position % len(strip)
+    matching_positions = [
+        index for index, symbol in enumerate(strip) if symbol == target_symbol
+    ]
+    if not matching_positions:
+        matching_positions = [normalized_start]
+
+    landing_position = matching_positions[rng.randrange(len(matching_positions))]
+    step_count = (landing_position - normalized_start) % len(strip)
+    if step_count == 0:
+        step_count = len(strip)
+    minimum = max(1, int(min_steps))
+    if step_count < minimum:
+        extra_turns = (minimum - step_count + len(strip) - 1) // len(strip)
+        step_count += extra_turns * len(strip)
+
+    return (normalized_start + step_count) % len(strip), step_count
+
+
+def advance_reel_to_position(
+    strip: tuple[str, ...],
+    *,
+    start_position: int,
+    target_position: int,
+    min_steps: int,
+) -> tuple[int, int]:
+    if not strip:
+        return 0, max(0, int(min_steps))
+
+    strip_length = len(strip)
+    normalized_start = start_position % strip_length
+    normalized_target = target_position % strip_length
+    step_count = (normalized_target - normalized_start) % strip_length
+    if step_count == 0:
+        step_count = strip_length
+    minimum = max(1, int(min_steps))
+    if step_count < minimum:
+        extra_turns = (minimum - step_count + strip_length - 1) // strip_length
+        step_count += extra_turns * strip_length
+
+    return normalized_target, step_count
 
 
 def slot_triple_multiplier_for_symbol(
@@ -270,9 +442,14 @@ def build_spin_result(
     bet: Decimal,
     balance_before: Decimal,
     rng: random.Random,
+    previous_reel_positions: tuple[int, int, int] | list[int] | None = None,
 ) -> SpinResult:
     did_spin = answer_key in {"again", "good", "easy"}
-    reels = ("MISS", "MISS", "MISS")
+    strip = build_reel_strip(config)
+    reel_start_positions = normalize_reel_positions(config, previous_reel_positions)
+    reel_positions = reel_start_positions
+    reel_step_counts = (0, 0, 0)
+    reels = visible_reels_for_positions(config, reel_positions)
     slot_multiplier = ZERO
     payout = Decimal("0")
     line_hit = False
@@ -283,7 +460,21 @@ def build_spin_result(
 
     if answer_key == "again":
         base_reward = quantize_decimal(bet, config.decimal_places)
-        reels = spin_reels(config, rng=rng)
+        reel_positions = spin_reel_positions(config, rng=rng)
+        reels = visible_reels_for_positions(config, reel_positions)
+        end_positions: list[int] = []
+        step_counts: list[int] = []
+        for reel_index, target_position in enumerate(reel_positions):
+            end_position, step_count = advance_reel_to_position(
+                strip,
+                start_position=reel_start_positions[reel_index],
+                target_position=target_position,
+                min_steps=(len(strip) * 2) + 9 + (reel_index * max(4, len(strip) // 3)),
+            )
+            end_positions.append(end_position)
+            step_counts.append(step_count)
+        reel_positions = tuple(end_positions)  # type: ignore[assignment]
+        reel_step_counts = tuple(step_counts)  # type: ignore[assignment]
         slot_multiplier, matched_symbol, match_count = evaluate_reels(config, reels)
         line_hit = match_count == 3
         raw_loss = quantize_decimal(
@@ -323,11 +514,27 @@ def build_spin_result(
             base_reward = Decimal("2") if answer_key == "easy" else Decimal("1")
         base_reward = quantize_decimal(base_reward, config.decimal_places)
         if did_spin:
-            reels = spin_reels(config, rng=rng)
+            reel_positions = spin_reel_positions(config, rng=rng)
+            reels = visible_reels_for_positions(config, reel_positions)
+            end_positions = []
+            step_counts = []
+            for reel_index, target_position in enumerate(reel_positions):
+                end_position, step_count = advance_reel_to_position(
+                    strip,
+                    start_position=reel_start_positions[reel_index],
+                    target_position=target_position,
+                    min_steps=(len(strip) * 2)
+                    + 9
+                    + (reel_index * max(4, len(strip) // 3)),
+                )
+                end_positions.append(end_position)
+                step_counts.append(step_count)
+            reel_positions = tuple(end_positions)  # type: ignore[assignment]
+            reel_step_counts = tuple(step_counts)  # type: ignore[assignment]
             slot_multiplier, matched_symbol, match_count = evaluate_reels(config, reels)
             line_hit = match_count == 3
         else:
-            reels = neutral_reels(config)
+            reels = visible_reels_for_positions(config, reel_positions)
             slot_multiplier = ONE
 
         payout = quantize_decimal(
@@ -384,6 +591,9 @@ def build_spin_result(
         line_hit=line_hit,
         slot_multiplier=slot_multiplier,
         matched_symbol=matched_symbol,
+        reel_start_positions=reel_start_positions,
+        reel_positions=reel_positions,
+        reel_step_counts=reel_step_counts,
         animation_enabled=did_spin,
         headline=headline,
         machine_key=str(getattr(config, "key", "") or ""),
@@ -399,6 +609,9 @@ def build_round_result(
     bet: Decimal,
     balance_before: Decimal,
     rng: random.Random,
+    previous_reel_positions_by_machine: (
+        dict[str, tuple[int, int, int] | list[int]] | None
+    ) = None,
 ) -> RoundSpinResult:
     running_balance = quantize_decimal(balance_before, config.decimal_places)
     machine_spin_results: list[SpinResult] = []
@@ -423,6 +636,9 @@ def build_round_result(
             line_hit=False,
             slot_multiplier=ZERO,
             matched_symbol=None,
+            reel_start_positions=(0, 0, 0),
+            reel_positions=(0, 0, 0),
+            reel_step_counts=(0, 0, 0),
             animation_enabled=False,
             headline=f"{ANSWER_LABELS[answer_key]} keeps the balance",
             machine_results=(),
@@ -436,6 +652,9 @@ def build_round_result(
             bet=bet,
             balance_before=running_balance,
             rng=rng,
+            previous_reel_positions=(previous_reel_positions_by_machine or {}).get(
+                machine.key
+            ),
         )
         machine_spin_results.append(machine_result)
         running_balance = machine_result.balance_after
@@ -474,12 +693,18 @@ def build_round_result(
         line_hit = first_result.line_hit
         slot_multiplier = first_result.slot_multiplier
         matched_symbol = first_result.matched_symbol
+        reel_start_positions = first_result.reel_start_positions
+        reel_positions = first_result.reel_positions
+        reel_step_counts = first_result.reel_step_counts
         headline = first_result.headline
     else:
         reels = ("MISS", "MISS", "MISS")
         line_hit = False
         slot_multiplier = ZERO
         matched_symbol = None
+        reel_start_positions = (0, 0, 0)
+        reel_positions = (0, 0, 0)
+        reel_step_counts = (0, 0, 0)
         direction = (
             "earns" if net_change > ZERO else "loses" if net_change < ZERO else "keeps"
         )
@@ -520,6 +745,9 @@ def build_round_result(
         line_hit=line_hit,
         slot_multiplier=slot_multiplier,
         matched_symbol=matched_symbol,
+        reel_start_positions=reel_start_positions,
+        reel_positions=reel_positions,
+        reel_step_counts=reel_step_counts,
         animation_enabled=did_spin,
         headline=headline,
         machine_results=machine_results,

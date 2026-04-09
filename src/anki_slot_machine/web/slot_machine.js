@@ -26,6 +26,8 @@
   const MIN_WIDTH = 100;
   const MAX_WIDTH = 420;
   const VIEWPORT_MARGIN = 12;
+  const REEL_GAP = 18;
+  const REEL_STEP = 64 + REEL_GAP;
   const defaultMoney = "1.00";
   const defaultMultiplier = "0.00";
   const CONTROL_PANEL_STORAGE_KEY = `anki-slot-machine-control-panel-v1:${INSTANCE_KEY}`;
@@ -37,6 +39,15 @@
   let interaction = null;
   let hasHydratedLayouts = false;
   let windowEventsBound = false;
+
+  const requestFrame =
+    typeof window.requestAnimationFrame === "function"
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => window.setTimeout(() => callback(Date.now()), 16);
+  const cancelFrame =
+    typeof window.cancelAnimationFrame === "function"
+      ? window.cancelAnimationFrame.bind(window)
+      : (handle) => window.clearTimeout(handle);
 
   function send(command, value) {
     if (typeof pycmd !== "function") {
@@ -105,13 +116,13 @@
           <div class="anki-slot-machine-window">
             <div class="anki-slot-machine-reels">
               <div class="anki-slot-machine-reel" data-slot-reel>
-                <div class="anki-slot-machine-symbol is-blank" data-slot-symbol></div>
+                <div class="anki-slot-machine-reel-track" data-slot-track></div>
               </div>
               <div class="anki-slot-machine-reel" data-slot-reel>
-                <div class="anki-slot-machine-symbol is-blank" data-slot-symbol></div>
+                <div class="anki-slot-machine-reel-track" data-slot-track></div>
               </div>
               <div class="anki-slot-machine-reel" data-slot-reel>
-                <div class="anki-slot-machine-symbol is-blank" data-slot-symbol></div>
+                <div class="anki-slot-machine-reel-track" data-slot-track></div>
               </div>
             </div>
           </div>
@@ -151,7 +162,12 @@
       currentLayout: null,
       lastAnimatedEventId: null,
       amountTimeout: null,
-      revealTimeouts: [],
+      activeSpin: null,
+      reelStrip: SYMBOLS.slice(),
+      reelPositions: [0, 0, 0],
+      syncedReelPositions: [0, 0, 0],
+      spinDurationMs: 750,
+      pendingBreakdownEventId: null,
       hasHydratedLayout: false,
     };
     machineViews[key] = view;
@@ -349,6 +365,7 @@
       breakdownWidth: 192,
       amountTop: 76,
       particlesTop: 94,
+      reelGap: REEL_GAP,
     };
   }
 
@@ -372,6 +389,7 @@
     view.root.style.setProperty("--slot-machine-breakdown-width", `${vars.breakdownWidth}px`);
     view.root.style.setProperty("--slot-machine-amount-top", `${vars.amountTop}px`);
     view.root.style.setProperty("--slot-machine-particles-top", `${vars.particlesTop}px`);
+    view.root.style.setProperty("--slot-machine-reel-gap", `${vars.reelGap}px`);
     machine.hidden = false;
 
     if (!options || options.persist !== false) {
@@ -503,20 +521,6 @@
     });
   }
 
-  function renderSymbolNode(node, symbol) {
-    node.className = "anki-slot-machine-symbol";
-    if (!symbol) {
-      node.classList.add("is-blank");
-      delete node.dataset.symbol;
-      node.innerHTML = "";
-      return;
-    }
-    node.dataset.symbol = symbol;
-    node.innerHTML = `
-      <span class="anki-slot-machine-symbol-sprite" data-slot-sprite></span>
-    `;
-  }
-
   function symbolMarkup(symbol) {
     return `
       <span class="anki-slot-machine-symbol anki-slot-machine-symbol--inline" data-symbol="${symbol}">
@@ -525,22 +529,309 @@
     `;
   }
 
-  function setReelSymbol(reel, symbol) {
-    const node = reel.querySelector("[data-slot-symbol]");
-    renderSymbolNode(node, symbol);
+  function normalizeStrip(rawStrip) {
+    const strip = Array.isArray(rawStrip)
+      ? rawStrip.map(toSymbol).filter((symbol) => Boolean(symbol))
+      : [];
+    return strip.length ? strip : SYMBOLS.slice();
   }
 
-  function clearRevealTimeouts(view) {
-    view.revealTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
-    view.revealTimeouts = [];
+  function defaultPositionsForStrip(strip) {
+    const length = Math.max(1, strip.length);
+    return [0, 1 % length, 2 % length];
+  }
+
+  function normalizePositions(rawPositions, stripLength, fallbackPositions) {
+    const fallback = Array.isArray(fallbackPositions)
+      ? fallbackPositions.slice(0, 3)
+      : defaultPositionsForStrip(new Array(Math.max(1, stripLength)));
+    const source =
+      Array.isArray(rawPositions) && rawPositions.length === 3 ? rawPositions : fallback;
+    return source.map((value, index) => {
+      const fallbackValue = fallback[index] || 0;
+      const numeric = Number.parseInt(String(value), 10);
+      if (!Number.isFinite(numeric)) {
+        return fallbackValue % Math.max(1, stripLength);
+      }
+      return ((numeric % Math.max(1, stripLength)) + Math.max(1, stripLength)) % Math.max(1, stripLength);
+    });
+  }
+
+  function normalizeStepCounts(rawStepCounts) {
+    const source = Array.isArray(rawStepCounts) && rawStepCounts.length === 3 ? rawStepCounts : [0, 0, 0];
+    return source.map((value) => {
+      const numeric = Number.parseInt(String(value), 10);
+      return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
+    });
+  }
+
+  function clampSpinDuration(durationMs) {
+    const numeric = Number.parseInt(String(durationMs), 10);
+    if (!Number.isFinite(numeric)) {
+      return 750;
+    }
+    return Math.min(750, Math.max(150, numeric));
+  }
+
+  function symbolAtPosition(strip, position) {
+    if (!strip.length) {
+      return null;
+    }
+    const length = strip.length;
+    return strip[((position % length) + length) % length];
+  }
+
+  function reelCellMarkup(symbol) {
+    const normalized = toSymbol(symbol);
+    if (!normalized) {
+      return `
+        <div class="anki-slot-machine-reel-cell">
+          <div class="anki-slot-machine-symbol is-blank"></div>
+        </div>
+      `;
+    }
+    return `
+      <div class="anki-slot-machine-reel-cell">
+        <div class="anki-slot-machine-symbol" data-symbol="${normalized}">
+          <span class="anki-slot-machine-symbol-sprite" data-slot-sprite></span>
+        </div>
+      </div>
+    `;
+  }
+
+  function setReelOffset(reel, offsetPx) {
+    reel.style.setProperty("--slot-track-offset", `${Math.round(offsetPx)}px`);
+  }
+
+  function renderReelTrack(reel, symbols, centeredIndex) {
+    const track = reel.querySelector("[data-slot-track]");
+    track.innerHTML = symbols.map((symbol) => reelCellMarkup(symbol)).join("");
+    setReelOffset(reel, -(centeredIndex * REEL_STEP));
+  }
+
+  function renderReelAtPosition(view, reel, position) {
+    const strip = view.reelStrip.length ? view.reelStrip : SYMBOLS;
+    const cells = [-1, 0, 1].map((offset) => symbolAtPosition(strip, position + offset));
+    renderReelTrack(reel, cells, 1);
+  }
+
+  function renderReelPositions(view, positions) {
+    const reels = view.root.querySelectorAll("[data-slot-reel]");
+    reels.forEach((reel, index) => {
+      renderReelAtPosition(view, reel, positions[index] || 0);
+    });
+  }
+
+  function stopSpinAnimation(view) {
+    if (view.activeSpin && view.activeSpin.frameId != null) {
+      cancelFrame(view.activeSpin.frameId);
+    }
+    view.activeSpin = null;
+    view.pendingBreakdownEventId = null;
+    view.root.querySelectorAll("[data-slot-reel]").forEach((reel) => {
+      reel.classList.remove("is-spinning");
+    });
   }
 
   function clearReels(view) {
+    stopSpinAnimation(view);
     view.root.querySelectorAll("[data-slot-reel]").forEach((reel) => {
       reel.classList.remove("is-bright");
       reel.classList.remove("is-pair");
-      setReelSymbol(reel, null);
     });
+    renderReelPositions(view, view.reelPositions);
+  }
+
+  function easeOutCubic(progress) {
+    return 1 - Math.pow(1 - progress, 3);
+  }
+
+  function stableHash(value) {
+    const input = String(value || "");
+    let hash = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+    }
+    return hash >>> 0;
+  }
+
+  function deterministicUnit() {
+    const seed = Array.from(arguments).join(":");
+    return (stableHash(seed) % 1000) / 999;
+  }
+
+  function slotSpinProgress(progress, settleAmount) {
+    const clamped = Math.min(Math.max(progress, 0), 1);
+    const cruiseBoundary = 0.8;
+    if (clamped <= cruiseBoundary) {
+      const cruiseProgress = clamped / cruiseBoundary;
+      return 0.88 * cruiseProgress;
+    }
+    const tailProgress = (clamped - cruiseBoundary) / (1 - cruiseBoundary);
+    const tailBase = 0.88 + 0.12 * easeOutCubic(tailProgress);
+    const overshoot = settleAmount * Math.sin(Math.PI * tailProgress) * (1 - tailProgress);
+    return tailBase + overshoot;
+  }
+
+  function renderStaticResult(view, result, positions) {
+    const reels = view.root.querySelectorAll("[data-slot-reel]");
+    stopSpinAnimation(view);
+    view.reelPositions = normalizePositions(
+      positions,
+      view.reelStrip.length,
+      view.reelPositions,
+    );
+    reels.forEach((reel) => {
+      reel.classList.remove("is-bright");
+      reel.classList.remove("is-pair");
+      reel.classList.remove("is-spinning");
+    });
+    renderReelPositions(view, view.reelPositions);
+
+    if (!result) {
+      return;
+    }
+    const symbols = (result.reels || []).map(toSymbol);
+    const pairSymbol = !result.line_hit ? toSymbol(result.matched_symbol) : null;
+    reels.forEach((reel, index) => {
+      if (result.line_hit) {
+        reel.classList.add("is-bright");
+      } else if (pairSymbol && symbols[index] === pairSymbol) {
+        reel.classList.add("is-pair");
+      }
+    });
+  }
+
+  function revealSpinResult(view, result, positions, options) {
+    const reels = Array.from(view.root.querySelectorAll("[data-slot-reel]"));
+    const highlight = Boolean(options && options.highlight);
+    const pairHighlight = options && options.pairHighlight === false ? false : true;
+    const onComplete = options && typeof options.onComplete === "function" ? options.onComplete : null;
+    const symbols = (result.reels || []).map(toSymbol);
+    const pairSymbol = !result.line_hit ? toSymbol(result.matched_symbol) : null;
+    const stripLength = Math.max(1, view.reelStrip.length);
+    const totalDuration = clampSpinDuration(view.spinDurationMs);
+    const startPositions = normalizePositions(
+      result.reel_start_positions,
+      stripLength,
+      view.reelPositions,
+    );
+    const endPositions = normalizePositions(
+      result.reel_positions || positions,
+      stripLength,
+      positions,
+    );
+    const stepCounts = normalizeStepCounts(result.reel_step_counts);
+
+    stopSpinAnimation(view);
+    reels.forEach((reel) => {
+      reel.classList.remove("is-bright");
+      reel.classList.remove("is-pair");
+    });
+
+    const spinState = {
+      frameId: null,
+    };
+    view.activeSpin = spinState;
+    view.pendingBreakdownEventId = result.event_id || null;
+    const finishFractions = [0.66, 0.84, 1];
+    const delayFractions = [0, 0.04, 0.08];
+
+    const reelStates = reels.map((reel, index) => {
+      const timingSeed = `${result.event_id || "spin"}:${view.key}:${index}`;
+      const startPosition = startPositions[index] || 0;
+      const targetPosition = endPositions[index] || 0;
+      const baseDelta = ((targetPosition - startPosition) % stripLength + stripLength) % stripLength;
+      const fallbackSteps = baseDelta === 0 ? stripLength : baseDelta;
+      const steps = Math.max(fallbackSteps, stepCounts[index] || 0);
+      const sequence = [];
+      for (let offset = -1; offset <= steps + 1; offset += 1) {
+        sequence.push(symbolAtPosition(view.reelStrip, startPosition + offset));
+      }
+      renderReelTrack(reel, sequence, 1);
+      reel.classList.add("is-spinning");
+      return {
+        reel,
+        index,
+        steps,
+        targetPosition,
+        targetSymbol: symbols[index] || symbolAtPosition(view.reelStrip, targetPosition),
+        delay: Math.round(
+          totalDuration *
+            (delayFractions[index] + 0.01 * deterministicUnit(timingSeed, "delay")),
+        ),
+        finishAt:
+          index === 2
+            ? totalDuration
+            : Math.round(
+                totalDuration *
+                  Math.min(
+                    0.97,
+                    finishFractions[index] +
+                      0.025 * (deterministicUnit(timingSeed, "finish") - 0.5),
+                  ),
+              ),
+        settleAmount: 0.04 + 0.09 * deterministicUnit(timingSeed, "settle"),
+        settled: false,
+      };
+    }).map((state) => ({
+      ...state,
+      duration: Math.max(220, state.finishAt - state.delay),
+    }));
+
+    const startTime =
+      window.performance && typeof window.performance.now === "function"
+        ? window.performance.now()
+        : Date.now();
+    const tick = (now) => {
+      if (view.activeSpin !== spinState) {
+        return;
+      }
+
+      let hasActiveReel = false;
+      reelStates.forEach((state) => {
+        const elapsed = now - startTime - state.delay;
+        if (elapsed <= 0) {
+          hasActiveReel = true;
+          return;
+        }
+
+        const progress = Math.min(1, elapsed / state.duration);
+        const virtualIndex =
+          1 + state.steps * slotSpinProgress(progress, state.settleAmount);
+        setReelOffset(state.reel, -(virtualIndex * REEL_STEP));
+
+        if (progress < 1) {
+          hasActiveReel = true;
+          return;
+        }
+
+        if (!state.settled) {
+          state.settled = true;
+          state.reel.classList.remove("is-spinning");
+          if (highlight) {
+            state.reel.classList.add("is-bright");
+          } else if (pairHighlight && pairSymbol && state.targetSymbol === pairSymbol) {
+            state.reel.classList.add("is-pair");
+          }
+        }
+      });
+
+      if (hasActiveReel) {
+        spinState.frameId = requestFrame(tick);
+        return;
+      }
+
+      view.reelPositions = endPositions.slice(0, 3);
+      renderReelPositions(view, view.reelPositions);
+      view.activeSpin = null;
+      view.pendingBreakdownEventId = null;
+      if (onComplete) {
+        onComplete();
+      }
+    };
+
+    spinState.frameId = requestFrame(tick);
   }
 
   function showAmount(view, text, tone) {
@@ -587,52 +878,11 @@
     window.setTimeout(() => machine.classList.remove("is-loss"), 220);
   }
 
-  function revealSpinResult(view, result, options) {
-    const reels = view.root.querySelectorAll("[data-slot-reel]");
-    const symbols = (result.reels || []).map(toSymbol);
-    const highlight = Boolean(options && options.highlight);
-    const pairHighlight = options && options.pairHighlight === false ? false : true;
-    const pairSymbol = !result.line_hit ? toSymbol(result.matched_symbol) : null;
-    clearReels(view);
-    reels.forEach((reel, index) => {
-      const timeoutId = window.setTimeout(() => {
-        if (highlight) {
-          reel.classList.add("is-bright");
-        } else if (pairHighlight && pairSymbol && symbols[index] === pairSymbol) {
-          reel.classList.add("is-pair");
-        }
-        setReelSymbol(reel, symbols[index] || null);
-      }, index * 140);
-      view.revealTimeouts.push(timeoutId);
-    });
-  }
-
-  function renderStaticResult(view, result) {
-    const reels = view.root.querySelectorAll("[data-slot-reel]");
-    clearRevealTimeouts(view);
-    if (!result || result.answer_key === "hard") {
-      clearReels(view);
-      return;
-    }
-    const symbols = result.reels ? result.reels.map(toSymbol) : [];
-    const pairSymbol =
-      result.answer_key === "again" ? null : !result.line_hit ? toSymbol(result.matched_symbol) : null;
-    reels.forEach((reel, index) => {
-      reel.classList.remove("is-bright");
-      reel.classList.remove("is-pair");
-      if (result.answer_key !== "again" && result.line_hit) {
-        reel.classList.add("is-bright");
-      } else if (pairSymbol && symbols[index] === pairSymbol) {
-        reel.classList.add("is-pair");
-      }
-      setReelSymbol(reel, symbols[index] || null);
-    });
-  }
-
-  function renderBreakdown(view, result) {
+  function renderBreakdown(view, result, options) {
     const baseNode = view.root.querySelector("[data-slot-base]");
     const bonusNode = view.root.querySelector("[data-slot-bonus]");
     const totalNode = view.root.querySelector("[data-slot-total]");
+    const isPending = Boolean(options && options.pending);
 
     baseNode.className = "anki-slot-machine-breakdown-line";
     bonusNode.className = "anki-slot-machine-breakdown-line";
@@ -643,6 +893,20 @@
       bonusNode.textContent = `x ${defaultMultiplier}`;
       totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
       totalNode.textContent = "= $0";
+      return;
+    }
+
+    if (isPending) {
+      if (result.answer_key === "again") {
+        baseNode.textContent = `-$${result.base_reward || defaultMoney}`;
+      } else if (result.answer_key === "hard") {
+        baseNode.textContent = `+$${result.base_reward || 0}`;
+      } else {
+        baseNode.textContent = `+$${result.base_reward || 1}`;
+      }
+      bonusNode.textContent = "";
+      totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
+      totalNode.textContent = "";
       return;
     }
 
@@ -706,34 +970,49 @@
       return;
     }
     view.lastAnimatedEventId = result.event_id;
-    clearRevealTimeouts(view);
 
     if (result.did_spin && result.animation_enabled) {
       if (result.answer_key === "again") {
-        revealSpinResult(view, result, { highlight: false, pairHighlight: false });
-        flashLoss(view);
-        burstParticles(view, "loss");
-        showAmount(
-          view,
-          `-$${result.payout || 0}`,
-          Number.parseFloat(String(result.payout || 0)) === 0 ? "neutral" : "loss",
-        );
+        revealSpinResult(view, result, view.syncedReelPositions, {
+          highlight: Boolean(result.line_hit),
+          pairHighlight: true,
+          onComplete: () => {
+            renderBreakdown(view, result);
+            flashLoss(view);
+            burstParticles(view, "loss");
+            showAmount(
+              view,
+              `-$${result.payout || 0}`,
+              Number.parseFloat(String(result.payout || 0)) === 0 ? "neutral" : "loss",
+            );
+          },
+        });
       } else if (result.line_hit) {
-        revealSpinResult(view, result, { highlight: true });
-        burstParticles(view, "win");
-        showAmount(view, `+$${result.payout}`, "win");
+        revealSpinResult(view, result, view.syncedReelPositions, {
+          highlight: true,
+          onComplete: () => {
+            renderBreakdown(view, result);
+            burstParticles(view, "win");
+            showAmount(view, `+$${result.payout}`, "win");
+          },
+        });
       } else {
-        revealSpinResult(view, result, { highlight: false });
-        showAmount(
-          view,
-          `+$${result.payout}`,
-          Number.parseFloat(String(result.payout || 0)) > 0 ? "win" : "neutral",
-        );
+        revealSpinResult(view, result, view.syncedReelPositions, {
+          highlight: false,
+          onComplete: () => {
+            renderBreakdown(view, result);
+            showAmount(
+              view,
+              `+$${result.payout}`,
+              Number.parseFloat(String(result.payout || 0)) > 0 ? "win" : "neutral",
+            );
+          },
+        });
       }
       return;
     }
 
-    renderStaticResult(view, result);
+    renderStaticResult(view, result, view.syncedReelPositions);
     if (result.answer_key === "again") {
       flashLoss(view);
       burstParticles(view, "loss");
@@ -786,6 +1065,9 @@
         return;
       }
       const view = machineViews[machineKey];
+      if (view) {
+        stopSpinAnimation(view);
+      }
       if (view && view.root && view.root.parentNode && typeof view.root.parentNode.removeChild === "function") {
         view.root.parentNode.removeChild(view.root);
       }
@@ -808,16 +1090,35 @@
       }
 
       view.root.querySelector("[data-slot-balance]").textContent = `$${state.balance || 0}`;
+      view.reelStrip = normalizeStrip(machine.reel_strip);
+      view.syncedReelPositions = normalizePositions(
+        machine.reel_positions,
+        view.reelStrip.length,
+        view.reelPositions,
+      );
+      view.spinDurationMs = clampSpinDuration(state.spin_animation_duration_ms);
       const machineResult = machineResultFor(state.last_result, machine.key);
-      renderBreakdown(view, machineResult);
+      const shouldDelayBreakdown =
+        Boolean(machineResult && machineResult.did_spin && machineResult.animation_enabled) &&
+        (machineResult.event_id !== view.lastAnimatedEventId ||
+          machineResult.event_id === view.pendingBreakdownEventId);
+      const isSameEventAnimationInProgress = Boolean(
+        machineResult &&
+          view.activeSpin &&
+          view.pendingBreakdownEventId &&
+          machineResult.event_id === view.pendingBreakdownEventId,
+      );
+      renderBreakdown(view, machineResult, { pending: shouldDelayBreakdown });
       if (
         machineResult &&
         machineResult.event_id &&
         machineResult.event_id !== view.lastAnimatedEventId
       ) {
         maybeAnimate(view, machineResult);
+      } else if (isSameEventAnimationInProgress) {
+        return;
       } else {
-        renderStaticResult(view, machineResult);
+        renderStaticResult(view, machineResult, view.syncedReelPositions);
       }
     });
 
