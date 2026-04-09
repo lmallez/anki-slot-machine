@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
   slot UI.
 - Expanded stored history from `30` to `1000` and reworked stats around recent
   performance.
+- Improved window-layout handling, instance-scoped reviewer bindings, and state
+  backup loading/writing.
 
 ## [v0.0.3] - 2026-04-08
 

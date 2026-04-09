@@ -1,0 +1,240 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+
+
+class ClassList {
+  constructor() {
+    this._classes = new Set();
+  }
+
+  add(...names) {
+    names.forEach((name) => this._classes.add(name));
+  }
+
+  remove(...names) {
+    names.forEach((name) => this._classes.delete(name));
+  }
+
+  toggle(name, force) {
+    if (force === true) {
+      this._classes.add(name);
+      return true;
+    }
+    if (force === false) {
+      this._classes.delete(name);
+      return false;
+    }
+    if (this._classes.has(name)) {
+      this._classes.delete(name);
+      return false;
+    }
+    this._classes.add(name);
+    return true;
+  }
+}
+
+
+class StyleMap {
+  constructor() {
+    this._values = new Map();
+  }
+
+  setProperty(name, value) {
+    this._values.set(name, String(value));
+  }
+
+  removeProperty(name) {
+    this._values.delete(name);
+  }
+
+  getPropertyValue(name) {
+    return this._values.get(name) || "";
+  }
+}
+
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.dataset = {};
+    this.hidden = false;
+    this.textContent = "";
+    this.className = "";
+    this.classList = new ClassList();
+    this.style = new Proxy(new StyleMap(), {
+      get(target, prop) {
+        if (prop in target) {
+          return target[prop].bind ? target[prop].bind(target) : target[prop];
+        }
+        return target.getPropertyValue(prop);
+      },
+      set(target, prop, value) {
+        target.setProperty(prop, value);
+        return true;
+      },
+    });
+    this._selectorMap = new Map();
+    this._selectorLists = new Map();
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+    child.parentNode = this;
+    return child;
+  }
+
+  addEventListener() {}
+
+  querySelector(selector) {
+    return this._selectorMap.get(selector) || null;
+  }
+
+  querySelectorAll(selector) {
+    return this._selectorLists.get(selector) || [];
+  }
+
+  set innerHTML(value) {
+    this._innerHTML = value;
+    if (!String(value).includes("data-slot-machine")) {
+      return;
+    }
+
+    const launcher = new FakeElement("button");
+    const machine = new FakeElement("div");
+    const dragHandle = new FakeElement("div");
+    const resizeHandle = new FakeElement("button");
+    const closeButton = new FakeElement("button");
+    const statsButton = new FakeElement("button");
+    const balance = new FakeElement("div");
+    const base = new FakeElement("div");
+    const bonus = new FakeElement("div");
+    const total = new FakeElement("div");
+    const amount = new FakeElement("div");
+    const particles = new FakeElement("div");
+
+    const reels = Array.from({ length: 3 }, () => {
+      const reel = new FakeElement("div");
+      const symbol = new FakeElement("div");
+      reel._selectorMap.set("[data-slot-symbol]", symbol);
+      return reel;
+    });
+
+    this._selectorMap.set("[data-slot-launcher]", launcher);
+    this._selectorMap.set("[data-slot-machine]", machine);
+    this._selectorMap.set("[data-slot-drag-handle]", dragHandle);
+    this._selectorMap.set("[data-slot-resize-handle]", resizeHandle);
+    this._selectorMap.set("[data-slot-close]", closeButton);
+    this._selectorMap.set("[data-slot-stats]", statsButton);
+    this._selectorMap.set("[data-slot-balance]", balance);
+    this._selectorMap.set("[data-slot-base]", base);
+    this._selectorMap.set("[data-slot-bonus]", bonus);
+    this._selectorMap.set("[data-slot-total]", total);
+    this._selectorMap.set("[data-slot-amount]", amount);
+    this._selectorMap.set("[data-slot-particles]", particles);
+    this._selectorLists.set("[data-slot-reel]", reels);
+  }
+}
+
+
+const messages = [];
+const localStorageMap = new Map();
+
+const document = {
+  readyState: "complete",
+  currentScript: {
+    src: "http://127.0.0.1/_addons/anki_slot_machine/web/slot_machine.js",
+  },
+  body: {
+    children: [],
+    classList: new ClassList(),
+    appendChild(child) {
+      this.children.push(child);
+      child.parentNode = this;
+      return child;
+    },
+    contains(child) {
+      return this.children.includes(child);
+    },
+  },
+  createElement(tagName) {
+    return new FakeElement(tagName);
+  },
+  addEventListener() {},
+};
+
+const windowObject = {
+  document,
+  innerWidth: 1440,
+  innerHeight: 900,
+  localStorage: {
+    getItem(key) {
+      return localStorageMap.has(key) ? localStorageMap.get(key) : null;
+    },
+    setItem(key, value) {
+      localStorageMap.set(key, String(value));
+    },
+  },
+  addEventListener() {},
+  setTimeout() {
+    return 1;
+  },
+  clearTimeout() {},
+  Math,
+  Date,
+};
+
+function pycmd(message) {
+  messages.push(message);
+}
+
+const context = vm.createContext({
+  window: windowObject,
+  document,
+  pycmd,
+  console,
+  Math,
+  Date,
+  setTimeout: windowObject.setTimeout,
+  clearTimeout: windowObject.clearTimeout,
+});
+windowObject.pycmd = pycmd;
+windowObject.AnkiSlotMachineInstances = {};
+
+const source = fs.readFileSync("src/anki_slot_machine/web/slot_machine.js", "utf8");
+vm.runInContext(source, context, { filename: "slot_machine.js" });
+
+assert.deepEqual(messages, ["anki-slot-machine:anki_slot_machine:refresh"]);
+
+const instance = windowObject.AnkiSlotMachineInstances.anki_slot_machine;
+assert.ok(instance, "slot machine instance should be registered");
+
+function currentOpenLayout(element) {
+  return {
+    left: element.style.left,
+    top: element.style.top,
+    hidden: element.classList.toggle("is-closed", false),
+  };
+}
+
+instance.syncState({
+  balance: "100.00",
+  window_layout: { left: 77, top: 88, width: 300, height: 456, mode: "open" },
+});
+
+const root = document.body.children[0];
+const restoredLayout = currentOpenLayout(root);
+assert.equal(restoredLayout.left, "77px");
+assert.equal(restoredLayout.top, "88px");
+assert.equal(root.style.right, "auto");
+assert.equal(root.style.bottom, "auto");
+
+instance.syncState({
+  balance: "101.00",
+  window_layout: { left: 11, top: 22, width: 320, height: 486, mode: "open" },
+});
+
+const stableLayout = currentOpenLayout(root);
+assert.equal(stableLayout.left, restoredLayout.left);
+assert.equal(stableLayout.top, restoredLayout.top);

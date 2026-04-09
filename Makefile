@@ -36,6 +36,7 @@ check:
 
 test:
 	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
+	node tests/test_slot_machine_layout_smoke.mjs
 
 real-slot-report:
 	$(PYTHON) scripts/evaluate_real_slot.py

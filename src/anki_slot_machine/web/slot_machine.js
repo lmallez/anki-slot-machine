@@ -34,6 +34,7 @@
   let revealTimeouts = [];
   let currentLayout = null;
   let interaction = null;
+  let hasHydratedLayout = false;
   const defaultMoney = "1.00";
   const defaultMultiplier = "0.00";
 
@@ -111,7 +112,6 @@
 
     document.body.appendChild(root);
     bindWindowControls();
-    applyLayout(loadLayout());
     return root;
   }
 
@@ -611,10 +611,13 @@
 
   function syncState(nextState) {
     ensureRoot();
-    if (nextState && nextState.window_layout) {
-      applyLayout(nextState.window_layout, { persist: false });
-    } else if (currentLayout == null) {
-      applyLayout(loadLayout(), { persist: false });
+    if (!hasHydratedLayout) {
+      if (nextState && nextState.window_layout) {
+        applyLayout(nextState.window_layout, { persist: false });
+      } else if (currentLayout == null) {
+        applyLayout(loadLayout(), { persist: false });
+      }
+      hasHydratedLayout = true;
     }
     root.querySelector("[data-slot-balance]").textContent = `$${nextState.balance || 0}`;
     renderBreakdown(nextState.last_result);
