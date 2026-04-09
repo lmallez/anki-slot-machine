@@ -7,6 +7,7 @@ from decimal import Decimal
 from .config import SlotMachineConfig, load_config
 from .decimal_utils import format_decimal, quantize_decimal
 from .game import SpinResult, answer_key_for_rating, build_spin_result
+from .runtime import addon_instance_key, addon_package_name
 from .state import SlotMachineState, StateRepository
 
 MILESTONE_NAMES = (
@@ -18,6 +19,145 @@ MILESTONE_NAMES = (
     "High Roller",
 )
 REVIEW_BET = Decimal("1")
+HISTORY_FORMAT_VERSION = 2
+TREND_EPSILON = Decimal("0.01")
+
+
+def _event_decimal(event: dict, field_name: str) -> Decimal:
+    return Decimal(str(event.get(field_name, "0")))
+
+
+def _recent_events(events: list[dict], window_size: int) -> list[dict]:
+    if window_size <= 0:
+        return []
+    return events[-window_size:]
+
+
+def _previous_recent_events(events: list[dict], window_size: int) -> list[dict]:
+    if window_size <= 0:
+        return []
+    return events[-window_size * 2 : -window_size]
+
+
+def _net_total(events: list[dict]) -> Decimal:
+    total = Decimal("0")
+    for event in events:
+        total += _event_decimal(event, "net_change")
+    return total
+
+
+def _trend_payload(current_events: list[dict], previous_events: list[dict]) -> dict[str, str]:
+    current_total = _net_total(current_events)
+    previous_total = _net_total(previous_events)
+    current_count = max(1, len(current_events))
+    previous_count = max(1, len(previous_events))
+    current_rate = current_total / Decimal(current_count)
+    previous_rate = previous_total / Decimal(previous_count)
+
+    if not previous_events:
+        if current_total > TREND_EPSILON:
+            return {"direction": "up", "arrow": "↑", "label": "accelerating"}
+        if current_total < -TREND_EPSILON:
+            return {"direction": "down", "arrow": "↓", "label": "cooling off"}
+        return {"direction": "flat", "arrow": "→", "label": "steady"}
+
+    delta = current_rate - previous_rate
+    if delta > TREND_EPSILON:
+        return {"direction": "up", "arrow": "↑", "label": "accelerating"}
+    if delta < -TREND_EPSILON:
+        return {"direction": "down", "arrow": "↓", "label": "cooling off"}
+    return {"direction": "flat", "arrow": "→", "label": "steady"}
+
+
+def _streak_context(streak: int) -> str:
+    if streak <= 0:
+        return "cooled off"
+    if streak == 1:
+        return "just started"
+    if streak <= 3:
+        return "warming up"
+    if streak <= 6:
+        return "hot streak"
+    return "on fire"
+
+
+def _session_temperature(*, today_net: Decimal, recent_trend: str, current_streak: int) -> str:
+    if current_streak >= 4 and today_net >= Decimal("0"):
+        return "heating up"
+    if today_net > TREND_EPSILON and recent_trend == "up":
+        return "heating up"
+    if today_net < -TREND_EPSILON and recent_trend == "down":
+        return "cooling down"
+    return "holding steady"
+
+
+def _volatility_label(
+    *,
+    average_win: Decimal,
+    best_win: Decimal,
+    worst_loss: Decimal,
+) -> str:
+    if best_win <= Decimal("0") and worst_loss <= Decimal("0"):
+        return "quiet"
+    if average_win > Decimal("0") and best_win >= average_win * Decimal("5"):
+        return "spiky"
+    if worst_loss >= best_win and worst_loss > Decimal("0"):
+        return "swingy"
+    if best_win > worst_loss * Decimal("2"):
+        return "upside-biased"
+    return "balanced"
+
+
+def _recent_summary(events: list[dict], *, window_size: int, decimal_places: int) -> dict:
+    current_events = _recent_events(events, window_size)
+    previous_events = _previous_recent_events(events, window_size)
+    trend = _trend_payload(current_events, previous_events)
+
+    spin_count = 0
+    hit_count = 0
+    win_total = Decimal("0")
+    loss_total = Decimal("0")
+    win_events = 0
+    loss_events = 0
+
+    for event in current_events:
+        if event.get("did_spin"):
+            spin_count += 1
+            if event.get("matched_symbol"):
+                hit_count += 1
+
+        net_change = _event_decimal(event, "net_change")
+        if net_change > Decimal("0"):
+            win_events += 1
+            win_total += net_change
+        elif net_change < Decimal("0"):
+            loss_events += 1
+            loss_total += abs(net_change)
+
+    total_net = quantize_decimal(_net_total(current_events), decimal_places)
+    hit_rate = round((hit_count / spin_count) * 100, 1) if spin_count else 0.0
+    average_win = quantize_decimal(
+        win_total / win_events if win_events else Decimal("0"),
+        decimal_places,
+    )
+    average_loss = quantize_decimal(
+        loss_total / loss_events if loss_events else Decimal("0"),
+        decimal_places,
+    )
+
+    return {
+        "label": f"Last {len(current_events)}",
+        "review_count": len(current_events),
+        "spin_count": spin_count,
+        "hit_count": hit_count,
+        "hit_rate": hit_rate,
+        "net": format_decimal(total_net, decimal_places),
+        "average_win": format_decimal(average_win, decimal_places),
+        "average_loss": format_decimal(average_loss, decimal_places),
+        "trend_direction": trend["direction"],
+        "trend_arrow": trend["arrow"],
+        "trend_label": trend["label"],
+    }
 
 
 class SlotMachineService:
@@ -109,6 +249,9 @@ class SlotMachineService:
             config.decimal_places,
         )
         serialized_result = result.to_dict(config.decimal_places)
+        serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
+        serialized_result["slot_instance_key"] = addon_instance_key()
+        serialized_result["slot_instance_label"] = addon_package_name()
         state.last_result = serialized_result
         state.history = [serialized_result, *state.history][: config.history_limit]
         state.undo_history = [previous_snapshot, *state.undo_history][
@@ -137,19 +280,157 @@ class SlotMachineService:
         config = self.config()
         state = self.state()
         ordered_days = sorted(state.daily_earnings.items(), reverse=True)
+        graph_history = list(reversed(state.history[:1000]))
+        recent_window = graph_history[-100:]
+        answer_counts = {"again": 0, "hard": 0, "good": 0, "easy": 0}
+        pair_hits = 0
+        triple_hits = 0
+        positive_spins = 0
+        recent_positive_spins = 0
+        recent_spin_count = 0
+        win_events = 0
+        loss_events = 0
+        win_total = Decimal("0")
+        loss_total = Decimal("0")
+        best_win = Decimal("0")
+        worst_loss = Decimal("0")
+
+        if graph_history:
+            balance_values = [
+                Decimal(str(event.get("balance_after", "0"))) for event in graph_history
+            ]
+            recent_high_balance = max(balance_values)
+            recent_low_balance = min(balance_values)
+        else:
+            recent_high_balance = state.balance
+            recent_low_balance = state.balance
+
+        for event in graph_history:
+            answer_key = str(event.get("answer_key", ""))
+            if answer_key in answer_counts:
+                answer_counts[answer_key] += 1
+
+            if event.get("did_spin"):
+                if event.get("line_hit"):
+                    triple_hits += 1
+                elif event.get("matched_symbol"):
+                    pair_hits += 1
+                if Decimal(str(event.get("payout", "0"))) > Decimal("0"):
+                    positive_spins += 1
+
+            net_change = Decimal(str(event.get("net_change", "0")))
+            if net_change > Decimal("0"):
+                win_events += 1
+                win_total += net_change
+                best_win = max(best_win, net_change)
+            elif net_change < Decimal("0"):
+                loss_events += 1
+                loss_total += abs(net_change)
+                worst_loss = max(worst_loss, abs(net_change))
+
+        recent_net = Decimal("0")
+        for event in recent_window:
+            if event.get("did_spin"):
+                recent_spin_count += 1
+                if Decimal(str(event.get("payout", "0"))) > Decimal("0"):
+                    recent_positive_spins += 1
+            recent_net += Decimal(str(event.get("net_change", "0")))
+
+        history_count = len(graph_history)
+        today = datetime.now().astimezone().date().isoformat()
+        today_net = quantize_decimal(
+            state.daily_earnings.get(today, Decimal("0")),
+            config.decimal_places,
+        )
+        lifetime_net = quantize_decimal(
+            state.balance - config.starting_balance,
+            config.decimal_places,
+        )
+        spin_win_rate = (
+            round((positive_spins / state.spins) * 100, 1) if state.spins else 0.0
+        )
+        average_win = quantize_decimal(
+            win_total / win_events if win_events else Decimal("0"),
+            config.decimal_places,
+        )
+        average_loss = quantize_decimal(
+            loss_total / loss_events if loss_events else Decimal("0"),
+            config.decimal_places,
+        )
+        recent_100_net = quantize_decimal(recent_net, config.decimal_places)
+        recent_100_spin_win_rate = (
+            round((recent_positive_spins / recent_spin_count) * 100, 1)
+            if recent_spin_count
+            else 0.0
+        )
+        recent_10_summary = _recent_summary(
+            graph_history,
+            window_size=10,
+            decimal_places=config.decimal_places,
+        )
+        recent_50_summary = _recent_summary(
+            graph_history,
+            window_size=50,
+            decimal_places=config.decimal_places,
+        )
+        recent_100_summary = _recent_summary(
+            graph_history,
+            window_size=100,
+            decimal_places=config.decimal_places,
+        )
+        session_temperature = _session_temperature(
+            today_net=today_net,
+            recent_trend=recent_10_summary["trend_direction"],
+            current_streak=state.current_streak,
+        )
+        volatility_label = _volatility_label(
+            average_win=average_win,
+            best_win=best_win,
+            worst_loss=worst_loss,
+        )
+
         return {
             "balance": format_decimal(state.balance, config.decimal_places),
+            "today_net": format_decimal(today_net, config.decimal_places),
             "review_stake": format_decimal(REVIEW_BET, config.decimal_places),
             "total_won": format_decimal(state.total_won, config.decimal_places),
             "total_lost": format_decimal(state.total_lost, config.decimal_places),
+            "lifetime_net": format_decimal(lifetime_net, config.decimal_places),
             "spins": state.spins,
             "current_streak": state.current_streak,
+            "streak_context": _streak_context(state.current_streak),
             "best_streak": state.best_streak,
             "biggest_jackpot": format_decimal(
                 state.biggest_jackpot,
                 config.decimal_places,
             ),
-            "history": state.history[:10],
+            "last_result": state.last_result,
+            "session_temperature": session_temperature,
+            "history_count": history_count,
+            "spin_win_rate": spin_win_rate,
+            "pair_hits": pair_hits,
+            "triple_hits": triple_hits,
+            "answer_counts": answer_counts,
+            "average_win": format_decimal(average_win, config.decimal_places),
+            "average_loss": format_decimal(average_loss, config.decimal_places),
+            "best_win": format_decimal(best_win, config.decimal_places),
+            "worst_loss": format_decimal(worst_loss, config.decimal_places),
+            "recent_100_net": format_decimal(recent_100_net, config.decimal_places),
+            "recent_100_spin_win_rate": recent_100_spin_win_rate,
+            "recent_10": recent_10_summary,
+            "recent_50": recent_50_summary,
+            "recent_100": recent_100_summary,
+            "recent_high_balance": format_decimal(
+                recent_high_balance,
+                config.decimal_places,
+            ),
+            "recent_low_balance": format_decimal(
+                recent_low_balance,
+                config.decimal_places,
+            ),
+            "volatility_label": volatility_label,
+            "history": state.history[:20],
+            "graph_history": graph_history,
             "daily_earnings": [
                 (day, format_decimal(value, config.decimal_places))
                 for day, value in ordered_days[:10]

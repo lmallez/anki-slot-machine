@@ -37,6 +37,10 @@ def addon_package_name() -> str:
     return mw.addonManager.addonFromModule(ADDON_MODULE)
 
 
+def addon_instance_key() -> str:
+    return addon_package_name()
+
+
 def addon_root() -> Path:
     return Path(mw.addonManager.addonsFolder()) / addon_package_name()
 

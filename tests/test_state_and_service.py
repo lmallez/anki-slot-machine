@@ -49,13 +49,17 @@ class StateRepositoryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             target = Path(tmp_dir) / "slot_machine_state.json"
+            backup = Path(tmp_dir) / "slot_machine_state.json.bak"
             repository = StateRepository()
             with patch("anki_slot_machine.state.state_path", return_value=target):
                 repository.save(state, config)
                 self.assertTrue(target.exists())
+                self.assertTrue(backup.exists())
                 payload = json.loads(target.read_text(encoding="utf-8"))
+                backup_payload = json.loads(backup.read_text(encoding="utf-8"))
 
         self.assertEqual(payload["balance"], "100.00")
+        self.assertEqual(backup_payload["balance"], "100.00")
         self.assertNotIn("notes", payload)
         self.assertNotIn("cards", payload)
 
@@ -101,6 +105,50 @@ class StateRepositoryTests(unittest.TestCase):
         self.assertEqual(state.total_won, Decimal("5.00"))
         self.assertEqual(state.daily_earnings["2026-04-07"], Decimal("4.00"))
         self.assertEqual(state.last_result["payout"], "2.00")
+
+    def test_repository_loads_backup_when_main_state_file_is_corrupted(self) -> None:
+        config = make_config()
+        valid_payload = {
+            "balance": "111.25",
+            "total_won": "12.50",
+            "total_lost": "1.00",
+            "history": [
+                {
+                    "event_id": "evt-1",
+                    "timestamp": "2026-04-09T16:10:00+09:00",
+                    "card_id": 9,
+                    "answer_key": "good",
+                    "answer_label": "Good",
+                    "bet": "1.00",
+                    "payout": "2.20",
+                    "base_reward": "1.00",
+                    "slot_bonus": "1.20",
+                    "net_change": "2.20",
+                    "balance_after": "111.25",
+                    "reels": ["SLOT_4", "SLOT_4", "SLOT_2"],
+                    "is_win": True,
+                    "did_spin": True,
+                    "line_hit": False,
+                    "slot_multiplier": "2.20",
+                    "matched_symbol": "SLOT_4",
+                    "animation_enabled": True,
+                    "headline": "Good lands a pair",
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            target = Path(tmp_dir) / "slot_machine_state.json"
+            backup = Path(tmp_dir) / "slot_machine_state.json.bak"
+            target.write_text("{broken json", encoding="utf-8")
+            backup.write_text(json.dumps(valid_payload), encoding="utf-8")
+            repository = StateRepository()
+            with patch("anki_slot_machine.state.state_path", return_value=target):
+                state = repository.load(config)
+
+        self.assertEqual(state.balance, Decimal("111.25"))
+        self.assertEqual(state.total_won, Decimal("12.50"))
+        self.assertEqual(state.history[0]["card_id"], 9)
 
 
 class ServiceTests(unittest.TestCase):
@@ -165,6 +213,131 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["spins"], 1)
         self.assertEqual(snapshot["best_streak"], 1)
         self.assertEqual(snapshot["history"][0]["card_id"], 99)
+        self.assertEqual(snapshot["history"][0]["history_format_version"], 2)
+        self.assertIn("slot_instance_key", snapshot["history"][0])
+        self.assertIn("slot_instance_label", snapshot["history"][0])
+
+    def test_stats_snapshot_exposes_graph_history_in_oldest_to_newest_order(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_2", "SLOT_2", "SLOT_3"),
+            ):
+                first = service.apply_review(card_id=1, ease=3, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+            ):
+                second = service.apply_review(card_id=2, ease=3, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(snapshot["graph_history"][0]["card_id"], first.card_id)
+        self.assertEqual(snapshot["graph_history"][-1]["card_id"], second.card_id)
+
+    def test_stats_snapshot_exposes_extended_roll_metrics(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_2", "SLOT_2", "SLOT_3"),
+            ):
+                service.apply_review(card_id=1, ease=3, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+            ):
+                service.apply_review(card_id=2, ease=4, button_count=4)
+            service.apply_review(card_id=3, ease=2, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertIn("lifetime_net", snapshot)
+        self.assertIn("spin_win_rate", snapshot)
+        self.assertIn("pair_hits", snapshot)
+        self.assertIn("triple_hits", snapshot)
+        self.assertIn("answer_counts", snapshot)
+        self.assertIn("best_win", snapshot)
+        self.assertIn("worst_loss", snapshot)
+        self.assertIn("recent_100_net", snapshot)
+        self.assertIn("recent_100_spin_win_rate", snapshot)
+        self.assertIn("recent_high_balance", snapshot)
+        self.assertIn("recent_low_balance", snapshot)
+        self.assertIn("today_net", snapshot)
+        self.assertIn("streak_context", snapshot)
+        self.assertIn("session_temperature", snapshot)
+        self.assertIn("volatility_label", snapshot)
+        self.assertIn("recent_10", snapshot)
+        self.assertIn("recent_50", snapshot)
+        self.assertIn("recent_100", snapshot)
+        self.assertEqual(snapshot["pair_hits"], 1)
+        self.assertEqual(snapshot["triple_hits"], 1)
+        self.assertEqual(snapshot["answer_counts"]["good"], 1)
+        self.assertEqual(snapshot["answer_counts"]["easy"], 1)
+        self.assertEqual(snapshot["answer_counts"]["hard"], 1)
+        self.assertEqual(snapshot["worst_loss"], "0.00")
+
+    def test_stats_snapshot_recent_windows_include_context_and_counts(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                side_effect=[
+                    ("SLOT_2", "SLOT_2", "SLOT_4"),
+                    ("SLOT_5", "SLOT_5", "SLOT_5"),
+                    ("SLOT_1", "SLOT_3", "SLOT_4"),
+                ],
+            ):
+                service.apply_review(card_id=1, ease=3, button_count=4)
+                service.apply_review(card_id=2, ease=4, button_count=4)
+                service.apply_review(card_id=3, ease=3, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(snapshot["streak_context"], "cooled off")
+        self.assertEqual(snapshot["recent_10"]["review_count"], 3)
+        self.assertEqual(snapshot["recent_10"]["spin_count"], 3)
+        self.assertEqual(snapshot["recent_10"]["hit_count"], 2)
+        self.assertEqual(snapshot["recent_10"]["trend_direction"], "up")
+        self.assertEqual(snapshot["recent_100"]["review_count"], 3)
+        self.assertEqual(snapshot["recent_50"]["review_count"], 3)
+        self.assertEqual(snapshot["today_net"], snapshot["lifetime_net"])
+        self.assertTrue(snapshot["session_temperature"])
+        self.assertTrue(snapshot["volatility_label"])
+
+    def test_stats_snapshot_tracks_best_and_recent_balance_metrics(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_5", "SLOT_5", "SLOT_5"),
+            ):
+                service.apply_review(card_id=1, ease=4, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                return_value=("SLOT_2", "SLOT_3", "SLOT_4"),
+            ):
+                service.apply_review(card_id=2, ease=3, button_count=4)
+            service.apply_review(card_id=3, ease=1, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertNotEqual(snapshot["best_win"], "0.00")
+        self.assertGreaterEqual(float(snapshot["worst_loss"]), 0.0)
+        self.assertGreaterEqual(
+            float(snapshot["recent_high_balance"]),
+            float(snapshot["recent_low_balance"]),
+        )
+        self.assertGreaterEqual(
+            float(snapshot["recent_high_balance"]),
+            float(snapshot["balance"]),
+        )
+        self.assertLessEqual(
+            float(snapshot["recent_low_balance"]),
+            float(snapshot["balance"]),
+        )
+        self.assertNotEqual(snapshot["recent_100_net"], "0.00")
 
     def test_easy_pays_double_base_times_multiplier(self) -> None:
         config = make_config()

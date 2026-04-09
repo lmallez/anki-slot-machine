@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.4] - 2026-04-09
+
+- Added a live terminal-style stats window and a `Stats` button in the floating
+  slot UI.
+- Expanded stored history from `30` to `1000` and reworked stats around recent
+  performance.
+
 ## [v0.0.3] - 2026-04-08
 
 ### Added

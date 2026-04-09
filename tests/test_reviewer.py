@@ -15,6 +15,10 @@ reviewer.mw = stubs.mw
 
 
 class ReviewerHookTests(unittest.TestCase):
+    def command(self, action: str, value: str | None = None) -> str:
+        prefix = "anki-slot-machine:anki_slot_machine"
+        return f"{prefix}:{action}" if value is None else f"{prefix}:{action}:{value}"
+
     def make_reviewer(self, button_count: int = 4):
         web = SimpleNamespace(eval=Mock())
         fake_col = SimpleNamespace(
@@ -68,7 +72,7 @@ class ReviewerHookTests(unittest.TestCase):
             patch.object(reviewer, "read_window_layout", return_value=None),
         ):
             handled, payload = reviewer.on_webview_did_receive_js_message(
-                (False, None), "anki-slot-machine:refresh", context
+                (False, None), self.command("refresh"), context
             )
 
         self.assertTrue(handled)
@@ -88,7 +92,7 @@ class ReviewerHookTests(unittest.TestCase):
             patch.object(reviewer, "read_window_layout", return_value=saved_layout),
         ):
             handled, payload = reviewer.on_webview_did_receive_js_message(
-                (False, None), "anki-slot-machine:refresh", context
+                (False, None), self.command("refresh"), context
             )
 
         self.assertTrue(handled)
@@ -103,13 +107,24 @@ class ReviewerHookTests(unittest.TestCase):
 
         with patch.object(reviewer, "write_window_layout") as write_window_layout:
             handled, result = reviewer.on_webview_did_receive_js_message(
-                (False, None), f"anki-slot-machine:saveLayout:{payload}", context
+                (False, None), self.command("saveLayout", payload), context
             )
 
         self.assertEqual((handled, result), (True, None))
         write_window_layout.assert_called_once_with(
             {"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"}
         )
+
+    def test_show_stats_message_opens_stats_dialog(self) -> None:
+        context = self.make_reviewer()
+
+        with patch.object(reviewer, "show_stats_dialog") as show_stats_dialog:
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("showStats"), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        show_stats_dialog.assert_called_once_with()
 
     def test_already_handled_filter_state_is_preserved(self) -> None:
         context = self.make_reviewer()
@@ -171,7 +186,7 @@ class ReviewerHookTests(unittest.TestCase):
 
         fake_service.snapshot.assert_called_once()
         script = context.web.eval.call_args[0][0]
-        payload = script.split("syncState(", 1)[1].rsplit(");", 1)[0]
+        payload = script.split(".syncState(", 1)[1].rsplit(");", 1)[0]
         self.assertEqual(json.loads(payload), {"balance": "99.00"})
 
 

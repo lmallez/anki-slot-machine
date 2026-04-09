@@ -37,7 +37,7 @@
   --traffic-green: #28c840;
 }
 
-#anki-slot-machine-root {
+.anki-slot-machine-root {
   position: fixed;
   top: 50%;
   width: 316px;
@@ -55,22 +55,22 @@
   --slot-machine-particles-top: 94px;
 }
 
-#anki-slot-machine-root [hidden] {
+.anki-slot-machine-root [hidden] {
   display: none !important;
 }
 
-#anki-slot-machine-root.is-closed {
+.anki-slot-machine-root.is-closed {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   height: auto;
 }
 
-#anki-slot-machine-root.is-closed .anki-slot-machine-amount {
+.anki-slot-machine-root.is-closed .anki-slot-machine-amount {
   display: none;
 }
 
-#anki-slot-machine-root.is-closed .anki-slot-machine-launcher {
+.anki-slot-machine-root.is-closed .anki-slot-machine-launcher {
   position: static;
   margin: 0;
 }
@@ -179,6 +179,19 @@
   align-items: center;
   gap: calc(8px * var(--slot-scale));
   flex: 0 0 auto;
+}
+
+.anki-slot-machine-toolbar-button {
+  border: 1px solid rgba(38, 20, 18, 0.55);
+  border-radius: calc(8px * var(--slot-scale));
+  padding: calc(4px * var(--slot-scale)) calc(8px * var(--slot-scale));
+  background: rgba(17, 18, 21, 0.55);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--slot-scale));
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .anki-slot-machine-window-controls {
@@ -524,6 +537,7 @@
 }
 
 .anki-slot-machine-launcher:hover,
+.anki-slot-machine-toolbar-button:hover,
 .anki-slot-machine-window-button:hover,
 .anki-slot-machine-window-button:focus-visible {
   filter: brightness(1.08);
@@ -617,7 +631,7 @@ body.anki-slot-machine-is-resizing {
 }
 
 @media (max-width: 480px) {
-  #anki-slot-machine-root {
+  .anki-slot-machine-root {
     width: 320px;
   }
 

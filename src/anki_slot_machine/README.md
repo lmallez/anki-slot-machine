@@ -20,6 +20,7 @@ It **does** make you want to press "Good" just one more time.
 
 - 🎰 Real 3-reel slot result tied to the visible outcome
 - 💸 Persistent fake-money balance across review sessions
+- 📈 Live terminal-style stats window with a PnL chart, tape feed, and quant sidebar
 - 📊 Odds and rewards page inside Anki
 - 📁 File-based slot profile with reel faces and pair/triple payouts
 - 🧱 Pixel-art slot UI with local bundled assets

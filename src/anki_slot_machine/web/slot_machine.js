@@ -1,11 +1,26 @@
 (function () {
-  if (window.AnkiSlotMachine) {
+  function addonPackageFromScript() {
+    const currentScript = document.currentScript;
+    const source = currentScript && currentScript.src ? String(currentScript.src) : "";
+    const match = source.match(/\/_addons\/([^/]+)\/web\/slot_machine\.js/);
+    return match ? decodeURIComponent(match[1]) : "anki_slot_machine";
+  }
+
+  function instanceKeyForPackage(packageName) {
+    return String(packageName || "anki_slot_machine");
+  }
+
+  const ADDON_PACKAGE = addonPackageFromScript();
+  const INSTANCE_KEY = instanceKeyForPackage(ADDON_PACKAGE);
+
+  window.AnkiSlotMachineInstances = window.AnkiSlotMachineInstances || {};
+  if (window.AnkiSlotMachineInstances[INSTANCE_KEY]) {
     return;
   }
 
-  const PREFIX = "anki-slot-machine";
+  const PREFIX = `anki-slot-machine:${INSTANCE_KEY}`;
   const SYMBOLS = ["slot_1", "slot_2", "slot_3", "slot_4", "slot_5"];
-  const LAYOUT_STORAGE_KEY = "anki-slot-machine-layout-v1";
+  const LAYOUT_STORAGE_KEY = `anki-slot-machine-layout-v1:${INSTANCE_KEY}`;
   const DEFAULT_WIDTH = 316;
   const DEFAULT_HEIGHT = 480;
   const WINDOW_RATIO = DEFAULT_HEIGHT / DEFAULT_WIDTH;
@@ -41,7 +56,8 @@
     }
 
     root = document.createElement("div");
-    root.id = "anki-slot-machine-root";
+    root.className = "anki-slot-machine-root";
+    root.dataset.slotInstance = INSTANCE_KEY;
     root.innerHTML = `
       <button class="anki-slot-machine-launcher" data-slot-launcher type="button" aria-label="Reopen slot machine">
         <span class="anki-slot-machine-launcher-dot"></span>
@@ -55,6 +71,7 @@
             </div>
             <div class="anki-slot-machine-title">Slot Machine</div>
             <div class="anki-slot-machine-titlebar-actions">
+              <button class="anki-slot-machine-toolbar-button" data-slot-stats type="button" aria-label="Open slot stats">Stats</button>
               <div class="anki-slot-machine-balance" data-slot-balance>$0</div>
             </div>
           </div>
@@ -305,6 +322,7 @@
     const dragHandle = root.querySelector("[data-slot-drag-handle]");
     const resizeHandle = root.querySelector("[data-slot-resize-handle]");
     const closeButton = root.querySelector("[data-slot-close]");
+    const statsButton = root.querySelector("[data-slot-stats]");
     const launcher = root.querySelector("[data-slot-launcher]");
 
     dragHandle.addEventListener("pointerdown", (event) => {
@@ -327,6 +345,12 @@
       updateLayout({ mode: "closed" });
     });
     closeButton.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    statsButton.addEventListener("click", () => {
+      send("showStats");
+    });
+    statsButton.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
 
@@ -605,7 +629,7 @@
     renderStaticResult(nextState.last_result);
   }
 
-  window.AnkiSlotMachine = {
+  window.AnkiSlotMachineInstances[INSTANCE_KEY] = {
     syncState,
   };
 

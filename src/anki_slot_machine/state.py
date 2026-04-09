@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 
 from .config import SlotMachineConfig
 from .decimal_utils import format_decimal, parse_stored_decimal
@@ -23,6 +24,19 @@ DECIMAL_STATE_FIELDS = (
     "total_lost",
     "biggest_jackpot",
 )
+
+
+def _backup_path(path: Path) -> Path:
+    return path.with_suffix(f"{path.suffix}.bak")
+
+
+def _read_state_payload(path: Path) -> dict | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"[anki-slot-machine] Failed to read state file {path.name}: {exc}")
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _normalize_event_payload(
@@ -249,28 +263,32 @@ class SlotMachineState:
 class StateRepository:
     def load(self, config: SlotMachineConfig) -> SlotMachineState:
         path = state_path()
-        if not path.exists():
+        backup = _backup_path(path)
+        for candidate in (path, backup):
+            if not candidate.exists():
+                continue
+            payload = _read_state_payload(candidate)
+            if payload is not None:
+                return SlotMachineState.from_dict(payload, config)
+        if path.exists() or backup.exists():
+            print("[anki-slot-machine] Falling back to a fresh local slot state.")
             return SlotMachineState.initial(config)
-
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            print(f"[anki-slot-machine] Failed to read state file: {exc}")
-            return SlotMachineState.initial(config)
-
-        return SlotMachineState.from_dict(payload, config)
+        return SlotMachineState.initial(config)
 
     def save(self, state: SlotMachineState, config: SlotMachineConfig) -> None:
         path = state_path()
+        backup = _backup_path(path)
         try:
-            path.write_text(
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = (
                 json.dumps(
                     state.to_dict(config.decimal_places),
                     indent=2,
                     ensure_ascii=False,
                 )
-                + "\n",
-                encoding="utf-8",
+                + "\n"
             )
+            path.write_text(payload, encoding="utf-8")
+            backup.write_text(payload, encoding="utf-8")
         except OSError as exc:
             print(f"[anki-slot-machine] Failed to save state file: {exc}")

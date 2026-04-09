@@ -5,15 +5,20 @@ import json
 from aqt import gui_hooks, mw
 
 from .runtime import (
+    addon_instance_key,
     addon_web_base_url,
     read_window_layout,
     register_web_exports,
     write_window_layout,
 )
 from .service import get_service
+from .ui.stats_dialog import show_stats_dialog
 
-COMMAND_PREFIX = "anki-slot-machine"
 _registered = False
+
+
+def _command_prefix() -> str:
+    return f"anki-slot-machine:{addon_instance_key()}"
 
 
 def register() -> None:
@@ -49,10 +54,11 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
     handled, result = handled_result
     if handled or not _is_reviewer_context(context):
         return handled_result
-    if not message.startswith(f"{COMMAND_PREFIX}:"):
+    command_prefix = _command_prefix()
+    if not message.startswith(f"{command_prefix}:"):
         return handled_result
 
-    payload = message[len(f"{COMMAND_PREFIX}:") :]
+    payload = message[len(f"{command_prefix}:") :]
     action, value = payload.split(":", 1) if ":" in payload else (payload, None)
 
     if action == "refresh":
@@ -60,6 +66,9 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
             card_id=_current_card_id(context),
             answer_button_count=_answer_button_count(context),
         )
+    elif action == "showStats":
+        show_stats_dialog()
+        return True, None
     elif action == "saveLayout" and value is not None:
         try:
             decoded = json.loads(value)
@@ -146,8 +155,11 @@ def _push_snapshot(reviewer, snapshot: dict) -> None:
     if layout is not None:
         enriched_snapshot["window_layout"] = layout
     payload = json.dumps(enriched_snapshot, ensure_ascii=False)
+    instance_key = json.dumps(addon_instance_key(), ensure_ascii=False)
     web.eval(
-        "window.AnkiSlotMachine && " f"window.AnkiSlotMachine.syncState({payload});"
+        "window.AnkiSlotMachineInstances && "
+        f"window.AnkiSlotMachineInstances[{instance_key}] && "
+        f"window.AnkiSlotMachineInstances[{instance_key}].syncState({payload});"
     )
 
 
