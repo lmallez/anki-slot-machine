@@ -49,31 +49,65 @@ class SlotMachineOddsDialog(QDialog):
 
     def reload(self) -> None:
         config = get_service().config()
-        summary = config.slot_probability_summary
+        machine_count = len(config.machines)
+        aggregate_good = sum(
+            (
+                machine.slot_probability_summary.expected_good_payout
+                for machine in config.machines
+            )
+        )
+        aggregate_easy = sum(
+            (
+                machine.slot_probability_summary.expected_easy_payout
+                for machine in config.machines
+            )
+        )
 
         summary_lines = [
-            "Real 3-reel slot model",
-            f"Loaded profile: {summary.profile_name}",
-            f"Profile file: {summary.profile_path}",
+            f"Real 3-reel slot model across {machine_count} machine(s)",
+            f"Shared profile: {config.slot_probability_summary.profile_name}",
+            f"Profile file: {config.slot_probability_summary.profile_path}",
             (
-                "Expected multiplier per spin: "
-                f"{format_decimal(summary.expected_multiplier, config.decimal_places)}x"
-            ),
-            f"No-match probability: {_percent(summary.no_match_probability)}",
-            f"Any pair probability: {_percent(summary.total_double_probability)}",
-            f"Any triple probability: {_percent(summary.total_triple_probability)}",
-            f"Any hit probability: {_percent(summary.hit_probability)}",
-            (
-                "Expected Good payout: "
-                f"${format_decimal(summary.expected_good_payout, config.decimal_places)}"
+                "Aggregate expected Good payout per review: "
+                f"${format_decimal(aggregate_good, config.decimal_places)}"
             ),
             (
-                "Expected Easy payout: "
-                f"${format_decimal(summary.expected_easy_payout, config.decimal_places)}"
+                "Aggregate expected Easy payout per review: "
+                f"${format_decimal(aggregate_easy, config.decimal_places)}"
             ),
         ]
 
         odds_lines = []
+        summary = config.slot_probability_summary
+        odds_lines.extend(
+            [
+                "Shared machine configuration",
+                (
+                    "Expected multiplier per machine spin: "
+                    f"{format_decimal(summary.expected_multiplier, config.decimal_places)}x"
+                ),
+                f"No-match probability: {_percent(summary.no_match_probability)}",
+                f"Any pair probability: {_percent(summary.total_double_probability)}",
+                f"Any triple probability: {_percent(summary.total_triple_probability)}",
+                f"Any hit probability: {_percent(summary.hit_probability)}",
+                (
+                    "Expected Good payout: "
+                    f"${format_decimal(summary.expected_good_payout, config.decimal_places)}"
+                ),
+                (
+                    "Expected Easy payout: "
+                    f"${format_decimal(summary.expected_easy_payout, config.decimal_places)}"
+                ),
+                "",
+            ]
+        )
+        odds_lines.extend(
+            [
+                "Active windows",
+                *[f"- {machine.label} [{machine.key}]" for machine in config.machines],
+                "",
+            ]
+        )
         for odds in summary.symbol_odds:
             odds_lines.extend(
                 [

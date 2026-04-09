@@ -53,6 +53,53 @@ class StatsDialogFormattingTests(unittest.TestCase):
         self.assertIn("[Good] +$2.50 -> $116.25 · small edge", block)
         self.assertNotIn(" = +$2.50", block)
 
+    def test_history_block_includes_machine_breakdown_for_multi_slot_rounds(self) -> None:
+        from anki_slot_machine.ui.stats_dialog import _history_block
+
+        event = {
+            "answer_key": "good",
+            "answer_label": "Good",
+            "timestamp": "2026-04-09T17:51:35+09:00",
+            "net_change": "3.45",
+            "balance_after": "103.45",
+            "did_spin": True,
+            "base_reward": "2.00",
+            "machine_results": [
+                {
+                    "machine_key": "alpha",
+                    "machine_label": "Alpha",
+                    "answer_key": "good",
+                    "did_spin": True,
+                    "line_hit": True,
+                    "reels": ["SLOT_1", "SLOT_1", "SLOT_1"],
+                    "base_reward": "1.00",
+                    "slot_multiplier": "2.50",
+                    "matched_symbol": "SLOT_1",
+                    "payout": "2.50",
+                    "net_change": "2.50",
+                },
+                {
+                    "machine_key": "beta",
+                    "machine_label": "Beta",
+                    "answer_key": "good",
+                    "did_spin": True,
+                    "line_hit": False,
+                    "reels": ["SLOT_2", "SLOT_5", "SLOT_2"],
+                    "base_reward": "1.00",
+                    "slot_multiplier": "0.95",
+                    "matched_symbol": "SLOT_2",
+                    "payout": "0.95",
+                    "net_change": "0.95",
+                },
+            ],
+        }
+
+        block = _history_block(event)
+
+        self.assertIn("[Good] +$3.45 -> $103.45 · jackpot spread", block)
+        self.assertIn("Alpha: 🐟 🐟 🐟 · clean hit", block)
+        self.assertIn("Beta: 🍖 🍀 🍖 · small edge", block)
+
     def test_reload_does_not_rewrite_history_or_quant_text_when_events_do_not_change(self) -> None:
         from anki_slot_machine.ui import stats_dialog
 

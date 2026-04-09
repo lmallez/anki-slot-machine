@@ -97,6 +97,17 @@ class FakeElement {
 
   set innerHTML(value) {
     this._innerHTML = value;
+    if (String(value).includes("data-slot-panel-add")) {
+      const addButton = new FakeElement("button");
+      const closeAllButton = new FakeElement("button");
+      const confirmButton = new FakeElement("button");
+      const cancelButton = new FakeElement("button");
+      this._selectorMap.set("[data-slot-panel-add]", addButton);
+      this._selectorMap.set("[data-slot-panel-close-all]", closeAllButton);
+      this._selectorMap.set("[data-slot-panel-confirm]", confirmButton);
+      this._selectorMap.set("[data-slot-panel-cancel]", cancelButton);
+      return;
+    }
     if (!String(value).includes("data-slot-machine")) {
       return;
     }
@@ -206,6 +217,7 @@ const source = fs.readFileSync("src/anki_slot_machine/web/slot_machine.js", "utf
 vm.runInContext(source, context, { filename: "slot_machine.js" });
 
 assert.deepEqual(messages, ["anki-slot-machine:anki_slot_machine:refresh"]);
+assert.equal(document.body.children.length, 0);
 
 const instance = windowObject.AnkiSlotMachineInstances.anki_slot_machine;
 assert.ok(instance, "slot machine instance should be registered");
@@ -223,7 +235,10 @@ instance.syncState({
   window_layout: { left: 77, top: 88, width: 300, height: 456, mode: "open" },
 });
 
-const root = document.body.children[0];
+assert.equal(document.body.children.length, 2);
+const controlPanel = document.body.children[0];
+const root = document.body.children[1];
+assert.ok(controlPanel.querySelector("[data-slot-panel-add]"));
 const restoredLayout = currentOpenLayout(root);
 assert.equal(restoredLayout.left, "77px");
 assert.equal(restoredLayout.top, "88px");
@@ -238,3 +253,49 @@ instance.syncState({
 const stableLayout = currentOpenLayout(root);
 assert.equal(stableLayout.left, restoredLayout.left);
 assert.equal(stableLayout.top, restoredLayout.top);
+
+instance.syncState({
+  balance: "103.45",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-1",
+    machine_results: [
+      {
+        event_id: "evt-1",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "2.50",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+      },
+      {
+        event_id: "evt-1",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "0.95",
+        did_spin: true,
+        animation_enabled: true,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+    ],
+  },
+});
+
+assert.equal(document.body.children.length, 4);
+const alphaRoot = document.body.children[2];
+const betaRoot = document.body.children[3];
+assert.equal(alphaRoot.style.left, "40px");
+assert.equal(alphaRoot.style.top, "50px");
+assert.equal(betaRoot.style.left, "80px");
+assert.equal(betaRoot.style.top, "90px");

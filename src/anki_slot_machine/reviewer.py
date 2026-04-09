@@ -4,11 +4,20 @@ import json
 
 from aqt import gui_hooks, mw
 
+from .config import (
+    add_machine_to_config,
+    close_all_machines_in_config,
+    remove_machine_from_config,
+)
 from .runtime import (
+    addon_config,
     addon_instance_key,
     addon_web_base_url,
+    delete_window_layout,
     read_window_layout,
+    read_window_layouts,
     register_web_exports,
+    write_addon_config,
     write_window_layout,
 )
 from .service import get_service
@@ -66,6 +75,42 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
             card_id=_current_card_id(context),
             answer_button_count=_answer_button_count(context),
         )
+    elif action == "addSlot":
+        write_addon_config(add_machine_to_config(addon_config()))
+        snapshot = get_service().snapshot(
+            card_id=_current_card_id(context),
+            answer_button_count=_answer_button_count(context),
+        )
+    elif action == "closeAllSlots":
+        current_config = addon_config()
+        updated_config = close_all_machines_in_config(current_config)
+        if updated_config != current_config:
+            removed_machine_keys = {
+                machine.get("key")
+                for machine in current_config.get("machines", [])
+                if isinstance(machine, dict) and isinstance(machine.get("key"), str)
+            } - {
+                machine.get("key")
+                for machine in updated_config.get("machines", [])
+                if isinstance(machine, dict) and isinstance(machine.get("key"), str)
+            }
+            write_addon_config(updated_config)
+            for machine_key in removed_machine_keys:
+                delete_window_layout(machine_key)
+        snapshot = get_service().snapshot(
+            card_id=_current_card_id(context),
+            answer_button_count=_answer_button_count(context),
+        )
+    elif action == "removeSlot" and value is not None:
+        current_config = addon_config()
+        updated_config = remove_machine_from_config(current_config, value)
+        if updated_config != current_config:
+            write_addon_config(updated_config)
+            delete_window_layout(value)
+        snapshot = get_service().snapshot(
+            card_id=_current_card_id(context),
+            answer_button_count=_answer_button_count(context),
+        )
     elif action == "showStats":
         show_stats_dialog()
         return True, None
@@ -75,6 +120,11 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
         except ValueError:
             return handled_result
         if isinstance(decoded, dict):
+            machine_key = decoded.get("machine_key")
+            layout = decoded.get("layout")
+            if isinstance(machine_key, str) and isinstance(layout, dict):
+                write_window_layout(layout, machine_key)
+                return True, None
             write_window_layout(decoded)
             return True, None
         return handled_result
@@ -151,9 +201,15 @@ def _push_snapshot(reviewer, snapshot: dict) -> None:
     if not web:
         return
     enriched_snapshot = dict(snapshot)
-    layout = read_window_layout()
-    if layout is not None:
-        enriched_snapshot["window_layout"] = layout
+    layouts = read_window_layouts()
+    if layouts:
+        enriched_snapshot["window_layouts"] = layouts
+        if "main" in layouts:
+            enriched_snapshot["window_layout"] = layouts["main"]
+    else:
+        layout = read_window_layout()
+        if layout is not None:
+            enriched_snapshot["window_layout"] = layout
     payload = json.dumps(enriched_snapshot, ensure_ascii=False)
     instance_key = json.dumps(addon_instance_key(), ensure_ascii=False)
     web.eval(

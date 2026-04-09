@@ -18,14 +18,46 @@ def write_addon_config(config: dict) -> None:
     mw.addonManager.writeConfig(ADDON_MODULE, config)
 
 
-def read_window_layout() -> dict | None:
+def read_window_layouts() -> dict[str, dict]:
     layout = addon_config().get(WINDOW_LAYOUT_CONFIG_KEY)
-    return layout if isinstance(layout, dict) else None
+    if not isinstance(layout, dict):
+        return {}
+
+    if any(key in layout for key in ("left", "top", "width", "height", "mode")):
+        return {"main": layout}
+
+    return {
+        str(key): value
+        for key, value in layout.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
 
 
-def write_window_layout(layout: dict) -> None:
+def read_window_layout(machine_key: str | None = None) -> dict | None:
+    layouts = read_window_layouts()
+    if machine_key is None:
+        return layouts.get("main")
+    return layouts.get(machine_key)
+
+
+def write_window_layout(layout: dict, machine_key: str | None = None) -> None:
     config = addon_config()
-    config[WINDOW_LAYOUT_CONFIG_KEY] = layout
+    if machine_key is None:
+        config[WINDOW_LAYOUT_CONFIG_KEY] = layout
+    else:
+        layouts = read_window_layouts()
+        layouts[machine_key] = layout
+        config[WINDOW_LAYOUT_CONFIG_KEY] = layouts
+    write_addon_config(config)
+
+
+def delete_window_layout(machine_key: str) -> None:
+    config = addon_config()
+    layouts = read_window_layouts()
+    if machine_key not in layouts:
+        return
+    del layouts[machine_key]
+    config[WINDOW_LAYOUT_CONFIG_KEY] = layouts
     write_addon_config(config)
 
 

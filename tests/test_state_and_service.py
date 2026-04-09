@@ -42,6 +42,24 @@ def make_config(*, profile_overrides=None, **config_overrides):
         return load_config.__globals__["config_from_raw"](raw)
 
 
+def make_multi_machine_config(*, profile_overrides=None, **config_overrides):
+    raw = {
+        "starting_balance": 100,
+        "decimal_places": 2,
+    }
+    raw.update(config_overrides)
+    profile = build_profile(**(profile_overrides or {}))
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        profile_path = Path(tmp_dir) / "profile.json"
+        profile_path.write_text(json.dumps(profile), encoding="utf-8")
+        raw["slot_profile_path"] = str(profile_path)
+        raw["machines"] = [
+            {"key": "alpha", "label": "Alpha"},
+            {"key": "beta", "label": "Beta"},
+        ]
+        return load_config.__globals__["config_from_raw"](raw)
+
+
 class StateRepositoryTests(unittest.TestCase):
     def test_repository_writes_only_local_state_file_with_decimal_strings(self) -> None:
         config = make_config()
@@ -356,6 +374,48 @@ class ServiceTests(unittest.TestCase):
             result.to_dict(config.decimal_places)["payout"],
         )
         self.assertEqual(snapshot["spins"], 1)
+
+    def test_multi_machine_round_aggregates_into_shared_balance_and_history(self) -> None:
+        config = make_multi_machine_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                side_effect=[
+                    ("SLOT_1", "SLOT_1", "SLOT_1"),
+                    ("SLOT_2", "SLOT_5", "SLOT_2"),
+                ],
+            ):
+                result = service.apply_review(card_id=88, ease=3, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(len(result.machine_results), 2)
+        self.assertEqual(result.payout, Decimal("3.45"))
+        self.assertEqual(snapshot["balance"], "103.45")
+        self.assertEqual(snapshot["spins"], 2)
+        self.assertEqual(len(snapshot["history"][0]["machine_results"]), 2)
+        self.assertEqual(snapshot["history"][0]["machine_results"][0]["machine_key"], "alpha")
+        self.assertEqual(snapshot["history"][0]["machine_results"][1]["machine_key"], "beta")
+
+    def test_multi_machine_again_cannot_overdraw_shared_bankroll(self) -> None:
+        config = make_multi_machine_config(starting_balance=2)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reels",
+                side_effect=[
+                    ("SLOT_4", "SLOT_4", "SLOT_4"),
+                    ("SLOT_4", "SLOT_4", "SLOT_4"),
+                ],
+            ):
+                result = service.apply_review(card_id=5, ease=1, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(result.payout, Decimal("2.00"))
+        self.assertEqual(result.balance_after, Decimal("0.00"))
+        self.assertEqual(result.machine_results[0]["payout"], "2.00")
+        self.assertEqual(result.machine_results[1]["payout"], "0.00")
+        self.assertEqual(snapshot["balance"], "0.00")
 
     def test_undo_last_review_restores_previous_slot_state(self) -> None:
         config = make_config()

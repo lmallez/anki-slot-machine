@@ -40,6 +40,47 @@ def load_test_config(*, profile_overrides=None, **config_overrides):
 
 
 class ConfigProfileTests(unittest.TestCase):
+    def test_machine_list_uses_one_shared_profile_for_all_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            shared_profile_path = Path(tmp_dir) / "shared.json"
+            shared_profile_path.write_text(
+                json.dumps(
+                    build_profile(
+                        name="shared_floor",
+                        pair_multipliers={"SLOT_5": 9.75},
+                    )
+                ),
+                encoding="utf-8",
+            )
+            config = config_module.config_from_raw(
+                {
+                    "starting_balance": 100,
+                    "decimal_places": 2,
+                    "slot_profile_path": str(shared_profile_path),
+                    "machines": [
+                        {
+                            "key": "alpha",
+                            "label": "Alpha Floor",
+                        },
+                        {
+                            "key": "beta",
+                            "label": "Beta Floor",
+                        },
+                    ],
+                }
+            )
+
+        self.assertEqual(config.machine_count, 2)
+        self.assertEqual(config.machines[0].key, "alpha")
+        self.assertEqual(config.machines[1].key, "beta")
+        self.assertEqual(config.slot_profile_name, "shared_floor")
+        self.assertEqual(config.slot_profile_path, str(shared_profile_path))
+        self.assertEqual(config.machines[0].slot_profile_path, str(shared_profile_path))
+        self.assertEqual(config.machines[1].slot_profile_path, str(shared_profile_path))
+        self.assertEqual(config.machines[0].slot_profile_name, "shared_floor")
+        self.assertEqual(config.machines[1].slot_profile_name, "shared_floor")
+        self.assertEqual(config.machines[1].slot_double_multipliers["SLOT_5"], Decimal("9.75"))
+
     def test_probabilities_match_slot_faces(self) -> None:
         config = load_test_config(
             profile_overrides={

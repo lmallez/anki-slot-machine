@@ -19,6 +19,7 @@ It **does** make you want to press "Good" just one more time.
 ## ✨ Features
 
 - 🎰 Real 3-reel slot result tied to the visible outcome
+- 🎰 Multiple independent slot windows can spin at once
 - 💸 Persistent fake-money balance across review sessions
 - 📈 Live terminal-style stats window with a PnL chart, tape feed, and quant sidebar
 - 📊 Odds and rewards page inside Anki
@@ -81,16 +82,17 @@ Like life. But compressed into 300ms.
 
 ## 🧮 How it works (for nerds)
 
-- The add-on loads one slot profile JSON file
-- That file defines reel faces, pair multipliers, and triple multipliers
+- The add-on loads one or more slot profile JSON files
+- Each visible machine uses its own profile
+- All machines share one bankroll, one streak, and one stats feed
 - Reel probabilities come from the face counts
 - Pairs and triples are evaluated from a real 3-reel result
-- The odds page computes the real distribution from that profile
+- The odds page computes both per-machine odds and aggregate expected payout
 
 Important:
 
 The machine is not solving the economy for you anymore.  
-It just runs the profile you give it.
+It just runs the profiles you give it.
 
 ---
 
@@ -100,7 +102,17 @@ It just runs the profile you give it.
 {
   "starting_balance": 100,
   "decimal_places": 2,
-  "slot_profile_path": "slot_profiles/base.json"
+  "slot_profile_path": "slot_profiles/base.json",
+  "machines": [
+    {
+      "key": "base",
+      "label": "Base"
+    },
+    {
+      "key": "second_window",
+      "label": "Second Window"
+    }
+  ]
 }
 ```
 
@@ -138,7 +150,8 @@ Useful intuition:
 - `faces` → how often each symbol shows up on one reel  
 - `pair_multipliers` → what an exact pair pays  
 - `triple_multipliers` → what a triple pays  
-- `slot_profile_path` → which profile file the add-on loads  
+- `slot_profile_path` → which shared profile every machine window loads  
+- `machines` → which machine windows appear on screen  
 
 ---
 
@@ -148,9 +161,10 @@ Tools → Slot Machine → Show Odds and Rewards
 
 Includes:
 
+- aggregate expected payout across all active machines  
 - real probabilities  
 - actual multipliers  
-- expected payout per spin  
+- expected payout per machine spin  
 
 The add-on menu also includes:
 
@@ -167,7 +181,8 @@ Yes, it survives restarts.
 No, you cannot cash it out.  
 
 Runtime state is stored separately from Anki card data, so the add-on does not
-modify scheduling, note fields, or card content.
+modify scheduling, note fields, or card content. All machines share the same
+saved bankroll and stats history.
 
 ---
 

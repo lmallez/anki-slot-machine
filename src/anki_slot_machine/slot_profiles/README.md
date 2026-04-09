@@ -35,5 +35,6 @@ Each profile file uses the same shape:
 }
 ```
 
-The add-on config only needs to point at one of these files with
-`slot_profile_path`.
+The add-on config points all reviewer windows at one shared profile through
+`slot_profile_path`. The `machines` list only controls how many windows appear
+and what each window is called.

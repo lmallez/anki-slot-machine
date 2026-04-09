@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+import re
 
 from .decimal_utils import (
     ONE,
@@ -39,9 +40,23 @@ DEFAULT_SLOT_PROFILE = {
     },
 }
 DEFAULT_SLOT_PROFILE_PATH = "slot_profiles/base.json"
+DEFAULT_MACHINE_KEY = "main"
 DEFAULT_HISTORY_LIMIT = 1000
 DEFAULT_MILESTONE_THRESHOLDS = (250, 500, 1000, 2500)
 DEFAULT_DECIMAL_PLACES = 2
+
+
+@dataclass(frozen=True)
+class SlotMachineDefinition:
+    key: str
+    label: str
+    decimal_places: int
+    slot_profile_path: str
+    slot_profile_name: str
+    slot_faces: dict[str, int]
+    slot_double_multipliers: dict[str, Decimal]
+    slot_triple_multipliers: dict[str, Decimal]
+    slot_probability_summary: "SlotProbabilitySummary"
 
 
 @dataclass(frozen=True)
@@ -73,6 +88,7 @@ class SlotProbabilitySummary:
 class SlotMachineConfig:
     starting_balance: Decimal
     decimal_places: int
+    machines: tuple[SlotMachineDefinition, ...]
     slot_profile_path: str
     slot_profile_name: str
     slot_faces: dict[str, int]
@@ -81,6 +97,17 @@ class SlotMachineConfig:
     slot_probability_summary: SlotProbabilitySummary
     history_limit: int
     milestone_thresholds: tuple[int, ...]
+
+    @property
+    def machine_count(self) -> int:
+        return len(self.machines)
+
+
+def _machine_entry_from_definition(machine: SlotMachineDefinition) -> dict[str, str]:
+    return {
+        "key": machine.key,
+        "label": machine.label,
+    }
 
 
 def _package_root(base_dir: Path | None = None) -> Path:
@@ -103,6 +130,28 @@ def _load_slot_profile_path(raw_value) -> str:
         return DEFAULT_SLOT_PROFILE_PATH
     value = str(raw_value).strip()
     return value or DEFAULT_SLOT_PROFILE_PATH
+
+
+def _default_machine_label(profile_name: str, index: int) -> str:
+    cleaned = str(profile_name or "").strip().replace("_", " ").replace("-", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if cleaned:
+        return cleaned.title()
+    return f"Machine {index}"
+
+
+def _normalize_machine_key(raw_value, *, index: int, used_keys: set[str]) -> str:
+    candidate = str(raw_value or "").strip().lower()
+    candidate = re.sub(r"[^a-z0-9]+", "_", candidate).strip("_")
+    if not candidate:
+        candidate = DEFAULT_MACHINE_KEY if index == 1 else f"machine_{index}"
+    unique = candidate
+    suffix = 2
+    while unique in used_keys:
+        unique = f"{candidate}_{suffix}"
+        suffix += 1
+    used_keys.add(unique)
+    return unique
 
 
 def _resolve_profile_path(profile_path: str, *, base_dir: Path | None = None) -> Path:
@@ -250,6 +299,56 @@ def _build_probability_summary(
     )
 
 
+def _machine_entries_from_raw(raw: dict) -> list[dict]:
+    if "machines" in raw:
+        machines = raw.get("machines")
+        if isinstance(machines, (list, tuple)):
+            return [item for item in machines if isinstance(item, dict)]
+
+    return [
+        {
+            "key": DEFAULT_MACHINE_KEY,
+            "label": "Slot Machine",
+        }
+    ]
+
+
+def _build_machine_definition(
+    raw_machine: dict,
+    *,
+    index: int,
+    decimal_places: int,
+    profile_path: str,
+    profile_name: str,
+    resolved_profile_path: str,
+    slot_faces: dict[str, int],
+    slot_double_multipliers: dict[str, Decimal],
+    slot_triple_multipliers: dict[str, Decimal],
+    probability_summary: SlotProbabilitySummary,
+    used_keys: set[str],
+) -> SlotMachineDefinition:
+    key = _normalize_machine_key(
+        raw_machine.get("key"),
+        index=index,
+        used_keys=used_keys,
+    )
+    label = str(raw_machine.get("label") or "").strip() or _default_machine_label(
+        profile_name,
+        index,
+    )
+    return SlotMachineDefinition(
+        key=key,
+        label=label,
+        decimal_places=decimal_places,
+        slot_profile_path=profile_path,
+        slot_profile_name=profile_name,
+        slot_faces=slot_faces,
+        slot_double_multipliers=slot_double_multipliers,
+        slot_triple_multipliers=slot_triple_multipliers,
+        slot_probability_summary=probability_summary,
+    )
+
+
 def config_from_raw(
     raw: dict | None,
     *,
@@ -260,9 +359,21 @@ def config_from_raw(
         raw.get("decimal_places"),
         DEFAULT_DECIMAL_PLACES,
     )
-    profile_path = _load_slot_profile_path(raw.get("slot_profile_path"))
+    machine_entries = _machine_entries_from_raw(raw)
+    shared_profile_path = _load_slot_profile_path(
+        raw.get("slot_profile_path")
+        or next(
+            (
+                item.get("profile_path")
+                for item in machine_entries
+                if isinstance(item.get("profile_path"), str)
+                and str(item.get("profile_path")).strip()
+            ),
+            None,
+        )
+    )
     profile_name, resolved_profile_path, profile_payload = _load_profile_payload(
-        profile_path,
+        shared_profile_path,
         base_dir=base_dir,
     )
     slot_faces = _load_slot_faces(profile_payload.get("faces"))
@@ -287,6 +398,24 @@ def config_from_raw(
         slot_triple_multipliers=slot_triple_multipliers,
         decimal_places=decimal_places,
     )
+    used_keys: set[str] = set()
+    machines = tuple(
+        _build_machine_definition(
+            raw_machine,
+            index=index,
+            decimal_places=decimal_places,
+            profile_path=shared_profile_path,
+            profile_name=profile_name,
+            resolved_profile_path=resolved_profile_path,
+            slot_faces=slot_faces,
+            slot_double_multipliers=slot_double_multipliers,
+            slot_triple_multipliers=slot_triple_multipliers,
+            probability_summary=probability_summary,
+            used_keys=used_keys,
+        )
+        for index, raw_machine in enumerate(machine_entries, start=1)
+    )
+    primary_machine = machines[0] if machines else None
 
     return SlotMachineConfig(
         starting_balance=max(
@@ -297,7 +426,8 @@ def config_from_raw(
             ),
         ),
         decimal_places=decimal_places,
-        slot_profile_path=profile_path,
+        machines=machines,
+        slot_profile_path=shared_profile_path,
         slot_profile_name=profile_name,
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
@@ -312,3 +442,48 @@ def load_config() -> SlotMachineConfig:
     from .runtime import addon_config
 
     return config_from_raw(addon_config())
+
+
+def add_machine_to_config(raw: dict | None) -> dict:
+    source = dict(raw or {})
+    config = config_from_raw(source)
+    used_keys = {machine.key for machine in config.machines}
+    next_index = len(config.machines) + 1
+    new_key = _normalize_machine_key(
+        f"machine_{next_index}",
+        index=next_index,
+        used_keys=used_keys,
+    )
+    machine_entries = [
+        _machine_entry_from_definition(machine) for machine in config.machines
+    ]
+    machine_entries.append(
+        {
+            "key": new_key,
+            "label": f"Slot {next_index}",
+        }
+    )
+    source["slot_profile_path"] = config.slot_profile_path
+    source["machines"] = machine_entries
+    return source
+
+
+def remove_machine_from_config(raw: dict | None, machine_key: str) -> dict:
+    source = dict(raw or {})
+    config = config_from_raw(source)
+    machine_entries = [
+        _machine_entry_from_definition(machine)
+        for machine in config.machines
+        if machine.key != machine_key
+    ]
+    source["slot_profile_path"] = config.slot_profile_path
+    source["machines"] = machine_entries
+    return source
+
+
+def close_all_machines_in_config(raw: dict | None) -> dict:
+    source = dict(raw or {})
+    config = config_from_raw(source)
+    source["slot_profile_path"] = config.slot_profile_path
+    source["machines"] = []
+    return source

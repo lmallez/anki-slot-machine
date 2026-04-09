@@ -33,7 +33,23 @@ SYMBOL_EMOJIS = {
 _active_dialog: SlotMachineStatsDialog | None = None
 
 
+def _machine_results(event: dict) -> list[dict]:
+    raw_results = event.get("machine_results")
+    if isinstance(raw_results, list):
+        return [item for item in raw_results if isinstance(item, dict)]
+    return [event]
+
+
+def _has_multiple_machine_results(event: dict) -> bool:
+    return len(_machine_results(event)) > 1
+
+
 def _reel_emoji_strip(event: dict) -> str:
+    if _has_multiple_machine_results(event):
+        machine_results = _machine_results(event)
+        hit_count = sum(1 for result in machine_results if result.get("matched_symbol"))
+        triple_count = sum(1 for result in machine_results if result.get("line_hit"))
+        return f"{hit_count}/{len(machine_results)} hits · {triple_count} triples"
     if not event.get("did_spin"):
         return "— — —"
     reels = event.get("reels") or []
@@ -125,6 +141,28 @@ def _summary_sentence(summary: dict) -> str:
 
 
 def _trade_commentary(event: dict) -> str:
+    if _has_multiple_machine_results(event):
+        machine_results = _machine_results(event)
+        hit_count = sum(1 for result in machine_results if result.get("matched_symbol"))
+        triple_count = sum(1 for result in machine_results if result.get("line_hit"))
+        if str(event.get("answer_key", "")) == "hard":
+            return "holds across the floor"
+        if str(event.get("answer_key", "")) == "again":
+            if triple_count:
+                return "broad liquidation"
+            if hit_count:
+                return "mixed downside"
+            return "dead drawdown"
+        if triple_count:
+            return "jackpot spread"
+        if hit_count >= 2:
+            return "stacked edge"
+        if hit_count == 1:
+            return "single print"
+        if str(event.get("payout", "0")) in {"0", "0.0", "0.00"}:
+            return "dead round"
+        return "prints green"
+
     answer = str(event.get("answer_key", ""))
     matched = bool(event.get("matched_symbol"))
     triple = bool(event.get("line_hit"))
@@ -152,6 +190,14 @@ def _trade_commentary(event: dict) -> str:
 
 
 def _calculation_strip(event: dict) -> str:
+    if _has_multiple_machine_results(event):
+        answer = str(event.get("answer_key", ""))
+        if answer == "hard":
+            return ""
+        base = str(event.get("base_reward", "0"))
+        change = _signed_money(str(event.get("net_change", "0")))
+        return f"${base} total -> {change}"
+
     answer = str(event.get("answer_key", ""))
     if answer == "hard":
         return ""
@@ -182,12 +228,30 @@ def _history_block(event: dict) -> str:
     details = f"{timestamp} · {recency} · {reels}"
     if calculation:
         details = f"{details} · {calculation}"
-    return f"[{answer}] {change} -> {balance} · {commentary}\n" f"{details}"
+    machine_lines: list[str] = []
+    if _has_multiple_machine_results(event):
+        for machine_result in _machine_results(event):
+            machine_label = str(
+                machine_result.get("machine_label")
+                or machine_result.get("machine_key")
+                or "Machine"
+            )
+            machine_reels = _reel_emoji_strip(machine_result)
+            machine_commentary = _trade_commentary(machine_result)
+            machine_calc = _calculation_strip(machine_result)
+            machine_line = f"{machine_label}: {machine_reels} · {machine_commentary}"
+            if machine_calc:
+                machine_line = f"{machine_line} · {machine_calc}"
+            machine_lines.append(machine_line)
+    block = f"[{answer}] {change} -> {balance} · {commentary}\n{details}"
+    if machine_lines:
+        block = f"{block}\n" + "\n".join(machine_lines)
+    return block
 
 
 def _history_signature(
     events: list[dict],
-) -> tuple[tuple[str, str, str, str, str, str], ...]:
+) -> tuple[tuple[str, str, str, str, str, str, int], ...]:
     return tuple(
         (
             str(event.get("event_id", "")),
@@ -196,6 +260,7 @@ def _history_signature(
             str(event.get("net_change", "")),
             str(event.get("balance_after", "")),
             str(event.get("matched_symbol", "")),
+            len(_machine_results(event)),
         )
         for event in events
     )

@@ -55,59 +55,55 @@
   --slot-machine-particles-top: 94px;
 }
 
-.anki-slot-machine-root [hidden] {
-  display: none !important;
+.anki-slot-machine-control-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10000;
+  pointer-events: auto;
+  font-family: "Courier New", monospace;
 }
 
-.anki-slot-machine-root.is-closed {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  height: auto;
-}
-
-.anki-slot-machine-root.is-closed .anki-slot-machine-amount {
-  display: none;
-}
-
-.anki-slot-machine-root.is-closed .anki-slot-machine-launcher {
-  position: static;
-  margin: 0;
-}
-
-.anki-slot-machine-launcher {
+.anki-slot-machine-control-panel-inner {
   display: inline-flex;
   align-items: center;
-  gap: calc(8px * var(--slot-window-scale));
-  margin-left: auto;
-  padding: calc(7px * var(--slot-window-scale)) calc(11px * var(--slot-window-scale));
+  gap: 8px;
+  padding: 10px;
   border: 1px solid rgba(38, 20, 18, 0.55);
-  border-radius: calc(12px * var(--slot-window-scale));
-  background: linear-gradient(180deg, rgba(168, 53, 49, 0.96), rgba(111, 29, 30, 0.96));
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(10, 10, 10, 0.96));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.anki-slot-machine-control-button {
+  border: 1px solid rgba(38, 20, 18, 0.55);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: rgba(168, 53, 49, 0.88);
   color: var(--text);
   font: inherit;
-  font-size: calc(13px * var(--slot-window-scale));
-  font-weight: 600;
-  cursor: pointer;
-  pointer-events: auto;
-  position: absolute;
-  top: 0;
-  right: 0;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.02em;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
 }
 
-.anki-slot-machine-launcher::before {
-  display: none;
+.anki-slot-machine-control-button.is-close-all,
+.anki-slot-machine-control-button.is-cancel {
+  background: rgba(17, 18, 21, 0.84);
 }
 
-.anki-slot-machine-launcher-dot {
-  width: calc(8px * var(--slot-window-scale));
-  height: calc(8px * var(--slot-window-scale));
-  border-radius: 999px;
-  background: var(--traffic-green);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
+.anki-slot-machine-control-button.is-confirm {
+  background: rgba(111, 29, 30, 0.92);
+}
+
+.anki-slot-machine-control-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.anki-slot-machine-root [hidden] {
+  display: none !important;
 }
 
 .anki-slot-machine-machine {
@@ -536,8 +532,8 @@
   opacity: 0.68;
 }
 
-.anki-slot-machine-launcher:hover,
 .anki-slot-machine-toolbar-button:hover,
+.anki-slot-machine-control-button:hover,
 .anki-slot-machine-window-button:hover,
 .anki-slot-machine-window-button:focus-visible {
   filter: brightness(1.08);

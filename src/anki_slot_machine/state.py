@@ -55,6 +55,20 @@ def _normalize_event_payload(
             parse_stored_decimal(normalized.get(field_name), decimal_places),
             decimal_places,
         )
+    raw_machine_results = normalized.get("machine_results")
+    if isinstance(raw_machine_results, list):
+        normalized["machine_results"] = [
+            machine_result
+            for item in raw_machine_results
+            if isinstance(item, dict)
+            for machine_result in [
+                _normalize_event_payload(
+                    item,
+                    decimal_places=decimal_places,
+                )
+            ]
+            if machine_result is not None
+        ]
     return normalized
 
 

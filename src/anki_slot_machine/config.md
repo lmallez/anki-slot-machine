@@ -8,8 +8,34 @@ changes Anki scheduling, intervals, or note data.
 - `starting_balance`: first balance for a fresh profile state file.
 - `decimal_places`: how many decimals are used for balances, payouts, and
   displayed multipliers.
-- `slot_profile_path`: path to the slot profile JSON file, relative to the
-  add-on root unless you provide an absolute path.
+- `slot_profile_path`: path to the shared slot profile JSON file, relative to
+  the add-on root unless you provide an absolute path.
+- `machines`: list of slot machine windows to show in the reviewer. Each item
+  needs a stable `key` and a display `label`. All windows use the same shared
+  profile from `slot_profile_path`.
+
+Example config:
+
+```json
+{
+  "starting_balance": 100,
+  "decimal_places": 2,
+  "slot_profile_path": "slot_profiles/base.json",
+  "machines": [
+    {
+      "key": "base",
+      "label": "Base"
+    },
+    {
+      "key": "second_window",
+      "label": "Second Window"
+    }
+  ]
+}
+```
+
+All configured machines are shown at the same time. They share the same
+bankroll, streak, history, stats, and slot profile.
 
 ## Slot profile format
 
@@ -48,10 +74,11 @@ The profile file is the source of truth for the slot:
 
 ## Reward rules
 
-- `Again`: spin the slot and lose `$1 x multiplier`, clamped so the balance never goes below zero.
+- `Again`: every machine spins and loses `$1 x multiplier`, clamped so the
+  shared balance never goes below zero.
 - `Hard`: earn `$0` with no spin.
-- `Good`: spin the slot and earn `$1 x multiplier`.
-- `Easy`: spin the slot and earn `$2 x multiplier`.
+- `Good`: every machine spins and earns `$1 x multiplier`.
+- `Easy`: every machine spins and earns `$2 x multiplier`.
 - A no-match spin uses `x0`.
 - An exact pair uses the profile pair multiplier for that symbol.
 - A triple uses the profile triple multiplier for that symbol.
@@ -71,7 +98,8 @@ The profile file is the source of truth for the slot:
 
 Tools -> Slot Machine -> Show Odds and Rewards shows:
 
-- the loaded slot profile
+- the configured machines
+- aggregate expected payout across the active machine set
 - no-match, pair, and triple rates
 - per-symbol reel probability
 - per-symbol pair multiplier
@@ -81,4 +109,5 @@ Tools -> Slot Machine -> Show Odds and Rewards shows:
 ## Persistence
 
 Runtime progress is stored in `user_files/slot_machine_state.json` inside the
-installed add-on folder so config edits stay separate from balance and stats.
+installed add-on folder so config edits stay separate from the shared balance
+and stats.

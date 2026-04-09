@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from .config import SlotMachineConfig, load_config
 from .decimal_utils import format_decimal, quantize_decimal
-from .game import SpinResult, answer_key_for_rating, build_spin_result
+from .game import RoundSpinResult, answer_key_for_rating, build_round_result
 from .runtime import addon_instance_key, addon_package_name
 from .state import SlotMachineState, StateRepository
 
@@ -44,6 +44,13 @@ def _net_total(events: list[dict]) -> Decimal:
     for event in events:
         total += _event_decimal(event, "net_change")
     return total
+
+
+def _machine_results_for_event(event: dict) -> list[dict]:
+    raw_results = event.get("machine_results")
+    if isinstance(raw_results, list):
+        return [item for item in raw_results if isinstance(item, dict)]
+    return [event]
 
 
 def _trend_payload(
@@ -127,10 +134,11 @@ def _recent_summary(
     loss_events = 0
 
     for event in current_events:
-        if event.get("did_spin"):
-            spin_count += 1
-            if event.get("matched_symbol"):
-                hit_count += 1
+        for machine_result in _machine_results_for_event(event):
+            if machine_result.get("did_spin"):
+                spin_count += 1
+                if machine_result.get("matched_symbol"):
+                    hit_count += 1
 
         net_change = _event_decimal(event, "net_change")
         if net_change > Decimal("0"):
@@ -204,6 +212,14 @@ class SlotMachineService:
         return {
             "balance": format_decimal(state.balance, config.decimal_places),
             "last_result": state.last_result,
+            "machines": [
+                {
+                    "key": machine.key,
+                    "label": machine.label,
+                    "profile_name": machine.slot_profile_name,
+                }
+                for machine in config.machines
+            ],
             "card_id": card_id,
             "answer_button_count": answer_button_count,
             "tier_name": tier_name,
@@ -214,13 +230,24 @@ class SlotMachineService:
             ),
         }
 
-    def apply_review(self, *, card_id: int, ease: int, button_count: int) -> SpinResult:
+    def apply_review(
+        self, *, card_id: int, ease: int, button_count: int
+    ) -> RoundSpinResult:
         config = self.config()
         state = self.state()
         previous_snapshot = state.review_snapshot(config.decimal_places)
         bet = quantize_decimal(REVIEW_BET, config.decimal_places)
         answer_key = answer_key_for_rating(ease, button_count)
-        result = build_spin_result(
+        if not config.machines:
+            return build_round_result(
+                config,
+                card_id=card_id,
+                answer_key=answer_key,
+                bet=bet,
+                balance_before=state.balance,
+                rng=self._rng,
+            )
+        result = build_round_result(
             config,
             card_id=card_id,
             answer_key=answer_key,
@@ -230,8 +257,11 @@ class SlotMachineService:
         )
 
         state.balance = result.balance_after
-        if result.did_spin:
-            state.spins += 1
+        state.spins += sum(
+            1
+            for machine_result in result.machine_results
+            if machine_result.get("did_spin")
+        )
         if result.is_win:
             state.total_won = quantize_decimal(
                 state.total_won + result.payout,
@@ -316,13 +346,14 @@ class SlotMachineService:
             if answer_key in answer_counts:
                 answer_counts[answer_key] += 1
 
-            if event.get("did_spin"):
-                if event.get("line_hit"):
-                    triple_hits += 1
-                elif event.get("matched_symbol"):
-                    pair_hits += 1
-                if Decimal(str(event.get("payout", "0"))) > Decimal("0"):
-                    positive_spins += 1
+            for machine_result in _machine_results_for_event(event):
+                if machine_result.get("did_spin"):
+                    if machine_result.get("line_hit"):
+                        triple_hits += 1
+                    elif machine_result.get("matched_symbol"):
+                        pair_hits += 1
+                    if Decimal(str(machine_result.get("payout", "0"))) > Decimal("0"):
+                        positive_spins += 1
 
             net_change = Decimal(str(event.get("net_change", "0")))
             if net_change > Decimal("0"):
@@ -336,10 +367,11 @@ class SlotMachineService:
 
         recent_net = Decimal("0")
         for event in recent_window:
-            if event.get("did_spin"):
-                recent_spin_count += 1
-                if Decimal(str(event.get("payout", "0"))) > Decimal("0"):
-                    recent_positive_spins += 1
+            for machine_result in _machine_results_for_event(event):
+                if machine_result.get("did_spin"):
+                    recent_spin_count += 1
+                    if Decimal(str(machine_result.get("payout", "0"))) > Decimal("0"):
+                        recent_positive_spins += 1
             recent_net += Decimal(str(event.get("net_change", "0")))
 
         history_count = len(graph_history)
@@ -397,6 +429,14 @@ class SlotMachineService:
 
         return {
             "balance": format_decimal(state.balance, config.decimal_places),
+            "machines": [
+                {
+                    "key": machine.key,
+                    "label": machine.label,
+                    "profile_name": machine.slot_profile_name,
+                }
+                for machine in config.machines
+            ],
             "today_net": format_decimal(today_net, config.decimal_places),
             "review_stake": format_decimal(REVIEW_BET, config.decimal_places),
             "total_won": format_decimal(state.total_won, config.decimal_places),

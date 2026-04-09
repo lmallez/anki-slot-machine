@@ -89,6 +89,7 @@ class ReviewerHookTests(unittest.TestCase):
 
         with (
             patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "read_window_layouts", return_value={"main": saved_layout}),
             patch.object(reviewer, "read_window_layout", return_value=saved_layout),
         ):
             handled, payload = reviewer.on_webview_did_receive_js_message(
@@ -115,6 +116,32 @@ class ReviewerHookTests(unittest.TestCase):
             {"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"}
         )
 
+    def test_save_layout_message_with_machine_key_persists_machine_layout(self) -> None:
+        context = self.make_reviewer()
+        payload = json.dumps(
+            {
+                "machine_key": "alpha",
+                "layout": {
+                    "left": 10,
+                    "top": 20,
+                    "width": 300,
+                    "height": 456,
+                    "mode": "open",
+                },
+            }
+        )
+
+        with patch.object(reviewer, "write_window_layout") as write_window_layout:
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("saveLayout", payload), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        write_window_layout.assert_called_once_with(
+            {"left": 10, "top": 20, "width": 300, "height": 456, "mode": "open"},
+            "alpha",
+        )
+
     def test_show_stats_message_opens_stats_dialog(self) -> None:
         context = self.make_reviewer()
 
@@ -125,6 +152,84 @@ class ReviewerHookTests(unittest.TestCase):
 
         self.assertEqual((handled, result), (True, None))
         show_stats_dialog.assert_called_once_with()
+
+    def test_add_slot_message_updates_config_and_pushes_snapshot(self) -> None:
+        context = self.make_reviewer()
+        fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "150.00"}))
+        existing_config = {
+            "slot_profile_path": "slot_profiles/base.json",
+            "machines": [{"key": "main", "label": "Main"}],
+        }
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "addon_config", return_value=existing_config),
+            patch.object(reviewer, "write_addon_config") as write_addon_config,
+        ):
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("addSlot"), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        written_config = write_addon_config.call_args[0][0]
+        self.assertEqual(len(written_config["machines"]), 2)
+        fake_service.snapshot.assert_called_once_with(card_id=123, answer_button_count=4)
+        self.assertIn("syncState", context.web.eval.call_args[0][0])
+
+    def test_remove_slot_message_updates_config_and_removes_layout(self) -> None:
+        context = self.make_reviewer()
+        fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "150.00"}))
+        existing_config = {
+            "slot_profile_path": "slot_profiles/base.json",
+            "machines": [
+                {"key": "main", "label": "Main"},
+                {"key": "alpha", "label": "Alpha"},
+            ],
+        }
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "addon_config", return_value=existing_config),
+            patch.object(reviewer, "write_addon_config") as write_addon_config,
+            patch.object(reviewer, "delete_window_layout") as delete_window_layout,
+        ):
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("removeSlot", "alpha"), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        written_config = write_addon_config.call_args[0][0]
+        self.assertEqual(written_config["machines"], [{"key": "main", "label": "Main"}])
+        delete_window_layout.assert_called_once_with("alpha")
+
+    def test_close_all_slots_message_removes_all_slots_and_layouts(self) -> None:
+        context = self.make_reviewer()
+        fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "150.00"}))
+        existing_config = {
+            "slot_profile_path": "slot_profiles/base.json",
+            "machines": [
+                {"key": "main", "label": "Main"},
+                {"key": "alpha", "label": "Alpha"},
+                {"key": "beta", "label": "Beta"},
+            ],
+        }
+
+        with (
+            patch.object(reviewer, "get_service", return_value=fake_service),
+            patch.object(reviewer, "addon_config", return_value=existing_config),
+            patch.object(reviewer, "write_addon_config") as write_addon_config,
+            patch.object(reviewer, "delete_window_layout") as delete_window_layout,
+        ):
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("closeAllSlots"), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        written_config = write_addon_config.call_args[0][0]
+        self.assertEqual(written_config["machines"], [])
+        delete_window_layout.assert_any_call("main")
+        delete_window_layout.assert_any_call("alpha")
+        delete_window_layout.assert_any_call("beta")
 
     def test_already_handled_filter_state_is_preserved(self) -> None:
         context = self.make_reviewer()
