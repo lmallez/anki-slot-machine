@@ -224,6 +224,8 @@ The repo uses a lightweight `src/<package>` layout:
 ## Development
 
 ```bash
+make install-dev
+make lint
 make check
 make test
 make real-slot-report

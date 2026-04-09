@@ -23,8 +23,8 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install lint dependency
-        run: python -m pip install black
+      - name: Install Python dev dependencies
+        run: python -m pip install -r requirements-dev.txt
 
       - name: Check formatting
         run: make lint

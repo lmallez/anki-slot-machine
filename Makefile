@@ -7,7 +7,7 @@ VERSION ?= $(DEV_VERSION)
 PYCACHE_PREFIX := /tmp/anki-slot-machine-pyc
 
 .DEFAULT_GOAL := help
-.PHONY: help build install install-hooks lint format check test real-slot-report real-slot-plot clean
+.PHONY: help build install install-hooks install-dev lint format check test real-slot-report real-slot-plot clean
 
 help:
 	@printf '%s\n' \
@@ -15,6 +15,7 @@ help:
 		'  make build          Build the .ankiaddon archive (default: dev version)' \
 		'  make install        Build and install into your local Anki addons21 folder' \
 		'  make install-hooks  Enable the repo pre-commit hook' \
+		'  make install-dev    Install pinned Python dev dependencies' \
 		'  make lint           Run black in check mode' \
 		'  make format         Format Python files with black' \
 		'  make check          Compile Python sources to catch syntax errors' \
@@ -34,6 +35,9 @@ install:
 
 install-hooks:
 	git config core.hooksPath .githooks
+
+install-dev:
+	$(PYTHON) -m pip install -r requirements-dev.txt
 
 lint:
 	$(PYTHON) -m black --check $(SRC_DIR)
