@@ -14,7 +14,7 @@ It does **not** improve your memory.
 It does **not** change scheduling, intervals, cards, or notes.  
 It **does** make you want to press "Good" just one more time.
 
-![Anki Slot Machine screenshot](docs/images/anki-slot-machine.jpeg)
+![Anki Slot Machine screenshot](https://raw.githubusercontent.com/lmallez/anki-slot-machine/main/docs/images/anki-slot-machine.jpeg)
 
 ---
 
