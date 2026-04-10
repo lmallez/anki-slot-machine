@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.8] - 2026-04-10
+
+### Added
+
+- Configurable signed per-answer values in `config.json` for `Again`, `Hard`,
+  `Good`, and `Easy`.
+- Separate undo-history retention cap to keep undo state small even when review
+  history grows.
+
+### Changed
+
+- Reworked the reward model so eligible answers now use their configured values
+  directly, with slot outcomes scaling the payout instead of relying on the
+  older fixed logic.
+- Updated the default economy to `Again = 0`, `Hard = 0.5`, `Good = 1.0`, and
+  `Easy = 1.5`.
+- Improved odds and reward reporting so the UI reflects the actual configured
+  answer values and real slot profile payouts.
+- Reduced backup-write frequency so the backup state file is no longer rewritten
+  on every review.
+
+### Fixed
+
+- Fixed the large-history slowdown caused by legacy oversized undo snapshots
+  being kept in persisted state and rewritten on every save.
+- Dropped legacy full-state snapshot entries from `undo_history` during load,
+  keeping only compact undo records.
+- Restored full undo-state consistency when rebuilding state from persisted
+  snapshots.
+
 ## [v0.0.7] - 2026-04-10
 
 - Changed the first-run default to one slot window labeled `Slot 1`.
