@@ -29,6 +29,26 @@ HISTORY_FORMAT_VERSION = 2
 TREND_EPSILON = Decimal("0.01")
 
 
+def _should_trigger_spin(
+    *,
+    answer_key: str,
+    eligible_reviews_since_spin_check: int,
+    config: SlotMachineConfig,
+    rng: random.Random,
+) -> tuple[bool, int]:
+    if answer_key == "again":
+        return True, eligible_reviews_since_spin_check
+    if answer_key == "hard":
+        return False, eligible_reviews_since_spin_check
+
+    next_count = eligible_reviews_since_spin_check + 1
+    if next_count < config.spin_trigger_every_n:
+        return False, next_count
+
+    did_spin = rng.random() < float(config.spin_trigger_chance)
+    return did_spin, 0
+
+
 def _event_decimal(event: dict, field_name: str) -> Decimal:
     return Decimal(str(event.get(field_name, "0")))
 
@@ -261,6 +281,12 @@ class SlotMachineService:
                 balance_before=state.balance,
                 rng=self._rng,
             )
+        did_spin, next_trigger_count = _should_trigger_spin(
+            answer_key=answer_key,
+            eligible_reviews_since_spin_check=state.eligible_reviews_since_spin_check,
+            config=config,
+            rng=self._rng,
+        )
         result = build_round_result(
             config,
             card_id=card_id,
@@ -269,6 +295,7 @@ class SlotMachineService:
             balance_before=state.balance,
             rng=self._rng,
             previous_reel_positions_by_machine=state.reel_positions,
+            did_spin_override=did_spin if answer_key in {"good", "easy"} else None,
         )
 
         next_reel_positions = {}
@@ -284,6 +311,7 @@ class SlotMachineService:
                     int(position) for position in reel_positions
                 ]
         state.reel_positions = next_reel_positions
+        state.eligible_reviews_since_spin_check = next_trigger_count
 
         state.balance = result.balance_after
         state.spins += sum(

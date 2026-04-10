@@ -130,6 +130,7 @@ class FakeElement {
     const base = new FakeElement("div");
     const bonus = new FakeElement("div");
     const total = new FakeElement("div");
+    const status = new FakeElement("div");
     const amount = new FakeElement("div");
     const particles = new FakeElement("div");
 
@@ -150,6 +151,7 @@ class FakeElement {
     this._selectorMap.set("[data-slot-base]", base);
     this._selectorMap.set("[data-slot-bonus]", bonus);
     this._selectorMap.set("[data-slot-total]", total);
+    this._selectorMap.set("[data-slot-status]", status);
     this._selectorMap.set("[data-slot-amount]", amount);
     this._selectorMap.set("[data-slot-particles]", particles);
     this._selectorLists.set("[data-slot-reel]", reels);
@@ -389,6 +391,16 @@ assert.equal(betaRoot.style.top, "90px");
 
 const alphaReels = alphaRoot.querySelectorAll("[data-slot-reel]");
 const betaReels = betaRoot.querySelectorAll("[data-slot-reel]");
+const alphaStatus = alphaRoot.querySelector("[data-slot-status]");
+const betaStatus = betaRoot.querySelector("[data-slot-status]");
+const alphaAmount = alphaRoot.querySelector("[data-slot-amount]");
+const betaAmount = betaRoot.querySelector("[data-slot-amount]");
+const alphaBase = alphaRoot.querySelector("[data-slot-base]");
+const alphaBonus = alphaRoot.querySelector("[data-slot-bonus]");
+const alphaTotal = alphaRoot.querySelector("[data-slot-total]");
+const betaBase = betaRoot.querySelector("[data-slot-base]");
+const betaBonus = betaRoot.querySelector("[data-slot-bonus]");
+const betaTotal = betaRoot.querySelector("[data-slot-total]");
 assert.equal(alphaReels.length, 3);
 assert.equal(betaReels.length, 3);
 assert.equal(animationFrames.length, 0, "adding a machine should not animate an old result");
@@ -612,6 +624,63 @@ assertTripleHighlight(alphaReels);
 assertPairHighlight(betaReels, [0, 2]);
 
 instance.syncState({
+  balance: "105.10",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-no-spin",
+    machine_results: [
+      {
+        event_id: "evt-no-spin",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "0.00",
+        base_reward: "0.00",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: false,
+      },
+      {
+        event_id: "evt-no-spin",
+        machine_key: "beta",
+        answer_key: "easy",
+        payout: "0.00",
+        base_reward: "0.00",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+      },
+    ],
+  },
+});
+
+assert.equal(animationFrames.length, 0, "non-spin results should not queue animation");
+assertNoHighlight(alphaReels);
+assertNoHighlight(betaReels);
+assert.equal(alphaStatus.textContent, "No spin");
+assert.equal(betaStatus.textContent, "No spin");
+assert.equal(alphaStatus.className.includes("is-visible"), true);
+assert.equal(betaStatus.className.includes("is-visible"), true);
+assert.equal(alphaAmount.textContent, "");
+assert.equal(betaAmount.textContent, "");
+assert.equal(alphaBase.textContent, "+$0.00");
+assert.equal(alphaBonus.textContent, "");
+assert.equal(alphaTotal.textContent, "");
+assert.equal(betaBase.textContent, "+$0.00");
+assert.equal(betaBonus.textContent, "");
+assert.equal(betaTotal.textContent, "");
+
+instance.syncState({
   balance: "104.10",
   machines: [
     { key: "alpha", label: "Alpha" },
@@ -653,6 +722,8 @@ instance.syncState({
 flushAnimationFrame();
 assertNoHighlight(alphaReels);
 assertNoHighlight(betaReels);
+assert.equal(alphaStatus.textContent, "");
+assert.equal(betaStatus.textContent, "");
 
 flushAnimationFrames();
 assertPairHighlight(alphaReels, [0, 2]);

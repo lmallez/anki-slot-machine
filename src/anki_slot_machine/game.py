@@ -443,8 +443,13 @@ def build_spin_result(
     balance_before: Decimal,
     rng: random.Random,
     previous_reel_positions: tuple[int, int, int] | list[int] | None = None,
+    did_spin_override: bool | None = None,
 ) -> SpinResult:
-    did_spin = answer_key in {"again", "good", "easy"}
+    did_spin = (
+        bool(did_spin_override)
+        if did_spin_override is not None
+        else answer_key in {"again", "good", "easy"}
+    )
     strip = build_reel_strip(config)
     reel_start_positions = normalize_reel_positions(config, previous_reel_positions)
     reel_positions = reel_start_positions
@@ -510,8 +515,10 @@ def build_spin_result(
     else:
         if answer_key == "hard":
             base_reward = Decimal("0")
-        else:
+        elif did_spin:
             base_reward = Decimal("2") if answer_key == "easy" else Decimal("1")
+        else:
+            base_reward = ZERO
         base_reward = quantize_decimal(base_reward, config.decimal_places)
         if did_spin:
             reel_positions = spin_reel_positions(config, rng=rng)
@@ -535,7 +542,7 @@ def build_spin_result(
             line_hit = match_count == 3
         else:
             reels = visible_reels_for_positions(config, reel_positions)
-            slot_multiplier = ONE
+            slot_multiplier = ZERO
 
         payout = quantize_decimal(
             base_reward * slot_multiplier,
@@ -559,6 +566,8 @@ def build_spin_result(
             )
         elif answer_key == "hard":
             headline = f"{ANSWER_LABELS[answer_key]} keeps the balance"
+        elif payout == ZERO:
+            headline = f"{ANSWER_LABELS[answer_key]} waits for the next spin"
         else:
             headline = (
                 f"{ANSWER_LABELS[answer_key]} earns "
@@ -612,6 +621,7 @@ def build_round_result(
     previous_reel_positions_by_machine: (
         dict[str, tuple[int, int, int] | list[int]] | None
     ) = None,
+    did_spin_override: bool | None = None,
 ) -> RoundSpinResult:
     running_balance = quantize_decimal(balance_before, config.decimal_places)
     machine_spin_results: list[SpinResult] = []
@@ -655,6 +665,7 @@ def build_round_result(
             previous_reel_positions=(previous_reel_positions_by_machine or {}).get(
                 machine.key
             ),
+            did_spin_override=did_spin_override,
         )
         machine_spin_results.append(machine_result)
         running_balance = machine_result.balance_after

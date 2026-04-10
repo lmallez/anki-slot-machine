@@ -174,6 +174,21 @@ class ConfigProfileTests(unittest.TestCase):
             750,
         )
 
+    def test_spin_trigger_defaults_and_clamping(self) -> None:
+        default_config = load_test_config()
+        self.assertEqual(default_config.spin_trigger_every_n, 1)
+        self.assertEqual(default_config.spin_trigger_chance, Decimal("1"))
+
+        clamped_config = load_test_config(
+            spin_trigger_every_n=0,
+            spin_trigger_chance=9,
+        )
+        self.assertEqual(clamped_config.spin_trigger_every_n, 1)
+        self.assertEqual(clamped_config.spin_trigger_chance, Decimal("1"))
+
+        low_chance_config = load_test_config(spin_trigger_chance=-1)
+        self.assertEqual(low_chance_config.spin_trigger_chance, Decimal("0"))
+
 
 if __name__ == "__main__":
     unittest.main()

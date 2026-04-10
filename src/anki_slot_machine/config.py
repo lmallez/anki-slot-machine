@@ -45,6 +45,8 @@ DEFAULT_HISTORY_LIMIT = 1000
 DEFAULT_MILESTONE_THRESHOLDS = (250, 500, 1000, 2500)
 DEFAULT_DECIMAL_PLACES = 2
 DEFAULT_SPIN_ANIMATION_DURATION_MS = 750
+DEFAULT_SPIN_TRIGGER_EVERY_N = 1
+DEFAULT_SPIN_TRIGGER_CHANCE = Decimal("1")
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ class SlotMachineConfig:
     slot_triple_multipliers: dict[str, Decimal]
     slot_probability_summary: SlotProbabilitySummary
     spin_animation_duration_ms: int
+    spin_trigger_every_n: int
+    spin_trigger_chance: Decimal
     history_limit: int
     milestone_thresholds: tuple[int, ...]
 
@@ -140,6 +144,23 @@ def _spin_animation_duration_ms(raw_value) -> int:
     except (TypeError, ValueError):
         value = DEFAULT_SPIN_ANIMATION_DURATION_MS
     return max(150, min(750, value))
+
+
+def _spin_trigger_every_n(raw_value) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = DEFAULT_SPIN_TRIGGER_EVERY_N
+    return max(1, value)
+
+
+def _spin_trigger_chance(raw_value) -> Decimal:
+    value = to_decimal(raw_value, DEFAULT_SPIN_TRIGGER_CHANCE)
+    if value < ZERO:
+        return ZERO
+    if value > ONE:
+        return ONE
+    return value
 
 
 def _default_machine_label(profile_name: str, index: int) -> str:
@@ -446,6 +467,8 @@ def config_from_raw(
         spin_animation_duration_ms=_spin_animation_duration_ms(
             raw.get("spin_animation_duration_ms")
         ),
+        spin_trigger_every_n=_spin_trigger_every_n(raw.get("spin_trigger_every_n")),
+        spin_trigger_chance=_spin_trigger_chance(raw.get("spin_trigger_chance")),
         history_limit=DEFAULT_HISTORY_LIMIT,
         milestone_thresholds=DEFAULT_MILESTONE_THRESHOLDS,
     )

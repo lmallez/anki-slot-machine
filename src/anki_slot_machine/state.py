@@ -172,6 +172,10 @@ def _normalize_state_snapshot_payload(
     normalized["reel_positions"] = _normalize_reel_positions_map(
         payload.get("reel_positions"),
     )
+    normalized["eligible_reviews_since_spin_check"] = max(
+        0,
+        int(payload.get("eligible_reviews_since_spin_check", 0)),
+    )
     return normalized
 
 
@@ -188,6 +192,7 @@ class SlotMachineState:
     history: list[dict] = field(default_factory=list)
     last_result: dict | None = None
     reel_positions: dict[str, list[int]] = field(default_factory=dict)
+    eligible_reviews_since_spin_check: int = 0
     undo_history: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -239,6 +244,9 @@ class SlotMachineState:
                 decimal_places=config.decimal_places,
             ),
             reel_positions=_normalize_reel_positions_map(data.get("reel_positions")),
+            eligible_reviews_since_spin_check=max(
+                0, int(data.get("eligible_reviews_since_spin_check", 0))
+            ),
             undo_history=[
                 normalized
                 for item in data.get("undo_history") or []
@@ -270,6 +278,7 @@ class SlotMachineState:
             "history": self.history,
             "last_result": self.last_result,
             "reel_positions": self.reel_positions,
+            "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
         }
 
     def restore_review_snapshot(
@@ -289,6 +298,9 @@ class SlotMachineState:
         self.history = restored.history
         self.last_result = restored.last_result
         self.reel_positions = restored.reel_positions
+        self.eligible_reviews_since_spin_check = (
+            restored.eligible_reviews_since_spin_check
+        )
 
     def to_dict(self, decimal_places: int) -> dict:
         return {
@@ -306,6 +318,7 @@ class SlotMachineState:
             "history": self.history,
             "last_result": self.last_result,
             "reel_positions": self.reel_positions,
+            "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
             "undo_history": self.undo_history,
         }
 

@@ -10,6 +10,10 @@ changes Anki scheduling, intervals, or note data.
   displayed multipliers.
 - `spin_animation_duration_ms`: total reel animation budget in milliseconds,
   clamped between `150` and `750`.
+- `spin_trigger_every_n`: run a spin check every `n` eligible reviews. Default
+  is `1`.
+- `spin_trigger_chance`: chance to spin when that check happens, from `0.0` to
+  `1.0`. Default is `1.0`.
 - `slot_profile_path`: path to the shared slot profile JSON file, relative to
   the add-on root unless you provide an absolute path.
 - `machines`: list of slot machine windows to show in the reviewer. Each item
@@ -23,6 +27,8 @@ Example config:
   "starting_balance": 100,
   "decimal_places": 2,
   "spin_animation_duration_ms": 500,
+  "spin_trigger_every_n": 1,
+  "spin_trigger_chance": 1.0,
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
@@ -82,17 +88,30 @@ but the configured face counts and resulting probabilities stay the same.
 - `Again`: every machine spins and loses `$1 x multiplier`, clamped so the
   shared balance never goes below zero.
 - `Hard`: earn `$0` with no spin.
-- `Good`: every machine spins and earns `$1 x multiplier`.
-- `Easy`: every machine spins and earns `$2 x multiplier`.
+- `Good`: earns a base `$1`, and spins only when the configured trigger check
+  succeeds.
+- `Easy`: earns a base `$2`, and spins only when the configured trigger check
+  succeeds.
 - A no-match spin uses `x0`.
 - An exact pair uses the profile pair multiplier for that symbol.
 - A triple uses the profile triple multiplier for that symbol.
+
+Trigger logic:
+
+- `Again` always spins.
+- `Hard` never spins.
+- `Good` and `Easy` increment one shared review counter.
+- When that counter reaches `spin_trigger_every_n`, the backend rolls
+  `spin_trigger_chance`.
+- The counter resets after each trigger check, whether the spin happens or not.
 
 ## How probabilities work
 
 - The slot is a real 3-reel model with 3 independent draws.
 - Reel probabilities come only from `faces`.
 - The backend owns reel-strip order, reel positions, and final stops.
+- Spin triggering is backend-owned too, so refresh, startup, and undo never
+  rerun the trigger algorithm.
 - For each symbol:
   - `p = faces / total_faces`
   - `P(pair) = 3 * p^2 * (1 - p)`

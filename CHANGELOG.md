@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 - Changed the first-run default to one slot window labeled `Slot 1`.
 - Made the `Slots` control start collapsed by default.
+- Added configurable spin cadence with `spin_trigger_every_n` and
+  `spin_trigger_chance`.
 
 ## [v0.0.6] - 2026-04-09
 

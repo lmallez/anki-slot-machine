@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from test_support import install_stubs
@@ -196,6 +197,55 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(len(snapshot["machines"][0]["reel_positions"]), 3)
         self.assertEqual(snapshot["spin_animation_duration_ms"], 750)
 
+    def test_default_spin_trigger_spins_every_eligible_review(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            service._rng = SimpleNamespace(random=lambda: 0.99)
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")),
+            ):
+                result = service.apply_review(card_id=1, ease=3, button_count=4)
+
+        self.assertTrue(result.did_spin)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+
+    def test_spin_trigger_every_n_waits_for_threshold(self) -> None:
+        config = make_config(spin_trigger_every_n=3)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            service._rng = SimpleNamespace(random=lambda: 0.0)
+            first = service.apply_review(card_id=1, ease=3, button_count=4)
+            second = service.apply_review(card_id=2, ease=3, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")),
+            ):
+                third = service.apply_review(card_id=3, ease=3, button_count=4)
+
+        self.assertFalse(first.did_spin)
+        self.assertEqual(first.payout, Decimal("0.00"))
+        self.assertFalse(second.did_spin)
+        self.assertEqual(second.payout, Decimal("0.00"))
+        self.assertTrue(third.did_spin)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+
+    def test_spin_trigger_chance_rolls_on_threshold_and_resets_counter(self) -> None:
+        config = make_config(spin_trigger_every_n=2, spin_trigger_chance=Decimal("0.5"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            service._rng = SimpleNamespace(random=lambda: 0.75)
+            first = service.apply_review(card_id=1, ease=3, button_count=4)
+            second = service.apply_review(card_id=2, ease=3, button_count=4)
+            third = service.apply_review(card_id=3, ease=3, button_count=4)
+
+        self.assertFalse(first.did_spin)
+        self.assertFalse(second.did_spin)
+        self.assertEqual(second.payout, Decimal("0.00"))
+        self.assertFalse(third.did_spin)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 1)
+
     def test_loss_updates_balance_and_stats_without_touching_card_data(self) -> None:
         config = make_config()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -224,6 +274,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["total_won"], "0.00")
         self.assertEqual(snapshot["spins"], 0)
         self.assertEqual(snapshot["best_streak"], 0)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
 
     def test_good_updates_balance_streak_and_history_with_decimal_payout(self) -> None:
         config = make_config()
@@ -452,18 +503,19 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["balance"], "0.00")
 
     def test_undo_last_review_restores_previous_slot_state(self) -> None:
-        config = make_config()
+        config = make_config(spin_trigger_every_n=3)
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_file = Path(tmp_dir) / "state.json"
             service = self.make_service(config, state_file)
             first = service.apply_review(card_id=11, ease=1, button_count=4)
+            service.apply_review(card_id=12, ease=3, button_count=4)
             expected_snapshot = service.snapshot()
             expected_stats = service.stats_snapshot()
             with patch(
                 "anki_slot_machine.game.spin_reel_positions",
                 return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")),
             ):
-                service.apply_review(card_id=12, ease=3, button_count=4)
+                service.apply_review(card_id=13, ease=3, button_count=4)
 
             self.assertTrue(service.undo_last_review())
 
@@ -479,6 +531,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(restored_stats, expected_stats)
         self.assertEqual(reloaded_snapshot, expected_snapshot)
         self.assertEqual(reloaded_stats, expected_stats)
+        self.assertEqual(reloaded.state().eligible_reviews_since_spin_check, 1)
 
     def test_undo_last_review_returns_false_without_review_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

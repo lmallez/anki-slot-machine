@@ -123,6 +123,8 @@ Main config lives in `src/anki_slot_machine/config.json`.
   "starting_balance": 100,
   "decimal_places": 2,
   "spin_animation_duration_ms": 500,
+  "spin_trigger_every_n": 1,
+  "spin_trigger_chance": 1.0,
   "slot_profile_path": "slot_profiles/base.json"
 }
 ```
@@ -162,6 +164,8 @@ Useful intuition:
 - `pair_multipliers` → what an exact pair pays  
 - `triple_multipliers` → what a triple pays  
 - `spin_animation_duration_ms` → total reel animation budget, capped at `750`  
+- `spin_trigger_every_n` → run a spin check every `n` `Good` / `Easy` reviews  
+- `spin_trigger_chance` → chance that the spin actually happens at that check  
 - `slot_profile_path` → which profile file the add-on loads  
 
 More detail is documented in `src/anki_slot_machine/config.md`.
