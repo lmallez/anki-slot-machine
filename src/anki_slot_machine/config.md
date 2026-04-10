@@ -26,12 +26,8 @@ Example config:
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
-      "key": "base",
-      "label": "Base"
-    },
-    {
-      "key": "second_window",
-      "label": "Second Window"
+      "key": "main",
+      "label": "Slot 1"
     }
   ]
 }

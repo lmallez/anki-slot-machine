@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.7] - 2026-04-10
+
+- Changed the first-run default to one slot window labeled `Slot 1`.
+- Made the `Slots` control start collapsed by default.
+
 ## [v0.0.6] - 2026-04-09
 
 - Switched reel resolution to a position-first backend model so `game.py`

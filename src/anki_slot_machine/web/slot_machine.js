@@ -35,7 +35,7 @@
   let controlPanel = null;
   let closeAllConfirmOpen = false;
   let lastSyncedMachineCount = 0;
-  let controlPanelCollapsed = false;
+  let controlPanelCollapsed = true;
   let interaction = null;
   let hasHydratedLayouts = false;
   let windowEventsBound = false;
@@ -63,9 +63,13 @@
 
   function readControlPanelCollapsed() {
     try {
-      return window.localStorage.getItem(CONTROL_PANEL_STORAGE_KEY) === "collapsed";
+      const stored = window.localStorage.getItem(CONTROL_PANEL_STORAGE_KEY);
+      if (stored == null) {
+        return true;
+      }
+      return stored === "collapsed";
     } catch (_error) {
-      return false;
+      return true;
     }
   }
 

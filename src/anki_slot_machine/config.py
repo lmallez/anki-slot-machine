@@ -318,7 +318,7 @@ def _machine_entries_from_raw(raw: dict) -> list[dict]:
     return [
         {
             "key": DEFAULT_MACHINE_KEY,
-            "label": "Slot Machine",
+            "label": "Slot 1",
         }
     ]
 

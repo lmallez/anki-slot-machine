@@ -5,12 +5,8 @@
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
-      "key": "base",
-      "label": "Base"
-    },
-    {
-      "key": "liberty_bell_pair",
-      "label": "Second Window"
+      "key": "main",
+      "label": "Slot 1"
     }
   ]
 }
