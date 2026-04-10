@@ -67,6 +67,8 @@ class FakeElement {
     this.textContent = "";
     this.className = "";
     this.classList = new ClassList();
+    this.parentNode = null;
+    this._innerHTML = "";
     this.style = new Proxy(new StyleMap(), {
       get(target, prop) {
         if (prop in target) {
@@ -83,10 +85,52 @@ class FakeElement {
     this._selectorLists = new Map();
   }
 
+  get firstChild() {
+    return this.children.length > 0 ? this.children[0] : null;
+  }
+
   appendChild(child) {
+    if (child && child.isFragment === true) {
+      while (child.children.length > 0) {
+        const nested = child.children.shift();
+        nested.parentNode = this;
+        this.children.push(nested);
+      }
+      return child;
+    }
     this.children.push(child);
     child.parentNode = this;
     return child;
+  }
+
+  removeChild(child) {
+    const index = this.children.indexOf(child);
+    if (index >= 0) {
+      this.children.splice(index, 1);
+      child.parentNode = null;
+    }
+    return child;
+  }
+
+  replaceChildren(...nodes) {
+    while (this.children.length > 0) {
+      const child = this.children.pop();
+      child.parentNode = null;
+    }
+    nodes.forEach((node) => {
+      this.appendChild(node);
+    });
+  }
+
+  setAttribute(name, value) {
+    if (name.startsWith("data-")) {
+      const datasetKey = name
+        .slice(5)
+        .replace(/-([a-z])/g, (_match, chr) => chr.toUpperCase());
+      this.dataset[datasetKey] = String(value);
+      return;
+    }
+    this[name] = String(value);
   }
 
   addEventListener() {}
@@ -101,13 +145,19 @@ class FakeElement {
 
   set innerHTML(value) {
     this._innerHTML = value;
+    this._selectorMap.clear();
+    this._selectorLists.clear();
+
     if (String(value).includes("data-slot-panel-add")) {
+      const panelInner = new FakeElement("div");
       const collapseButton = new FakeElement("button");
       const addButton = new FakeElement("button");
       const closeAllButton = new FakeElement("button");
       const confirmButton = new FakeElement("button");
       const cancelButton = new FakeElement("button");
       const expandButton = new FakeElement("button");
+
+      this._selectorMap.set(".anki-slot-machine-control-panel-inner", panelInner);
       this._selectorMap.set("[data-slot-panel-collapse]", collapseButton);
       this._selectorMap.set("[data-slot-panel-add]", addButton);
       this._selectorMap.set("[data-slot-panel-close-all]", closeAllButton);
@@ -116,6 +166,7 @@ class FakeElement {
       this._selectorMap.set("[data-slot-panel-expand]", expandButton);
       return;
     }
+
     if (!String(value).includes("data-slot-machine")) {
       return;
     }
@@ -127,6 +178,7 @@ class FakeElement {
     const closeButton = new FakeElement("button");
     const statsButton = new FakeElement("button");
     const balance = new FakeElement("div");
+    const title = new FakeElement("div");
     const base = new FakeElement("div");
     const bonus = new FakeElement("div");
     const total = new FakeElement("div");
@@ -148,6 +200,7 @@ class FakeElement {
     this._selectorMap.set("[data-slot-close]", closeButton);
     this._selectorMap.set("[data-slot-stats]", statsButton);
     this._selectorMap.set("[data-slot-balance]", balance);
+    this._selectorMap.set("[data-slot-title]", title);
     this._selectorMap.set("[data-slot-base]", base);
     this._selectorMap.set("[data-slot-bonus]", bonus);
     this._selectorMap.set("[data-slot-total]", total);
@@ -155,6 +208,18 @@ class FakeElement {
     this._selectorMap.set("[data-slot-amount]", amount);
     this._selectorMap.set("[data-slot-particles]", particles);
     this._selectorLists.set("[data-slot-reel]", reels);
+  }
+
+  get innerHTML() {
+    return this._innerHTML;
+  }
+}
+
+
+class FakeDocumentFragment extends FakeElement {
+  constructor() {
+    super("#document-fragment");
+    this.isFragment = true;
   }
 }
 
@@ -179,12 +244,23 @@ const document = {
       child.parentNode = this;
       return child;
     },
+    removeChild(child) {
+      const index = this.children.indexOf(child);
+      if (index >= 0) {
+        this.children.splice(index, 1);
+        child.parentNode = null;
+      }
+      return child;
+    },
     contains(child) {
       return this.children.includes(child);
     },
   },
   createElement(tagName) {
     return new FakeElement(tagName);
+  },
+  createDocumentFragment() {
+    return new FakeDocumentFragment();
   },
   addEventListener() {},
 };
@@ -381,9 +457,9 @@ instance.syncState({
   },
 });
 
-assert.equal(document.body.children.length, 4);
-const alphaRoot = document.body.children[2];
-const betaRoot = document.body.children[3];
+assert.equal(document.body.children.length, 3);
+const alphaRoot = document.body.children[1];
+const betaRoot = document.body.children[2];
 assert.equal(alphaRoot.style.left, "40px");
 assert.equal(alphaRoot.style.top, "50px");
 assert.equal(betaRoot.style.left, "80px");
