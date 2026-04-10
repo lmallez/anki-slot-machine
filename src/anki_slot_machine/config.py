@@ -47,6 +47,12 @@ DEFAULT_DECIMAL_PLACES = 2
 DEFAULT_SPIN_ANIMATION_DURATION_MS = 750
 DEFAULT_SPIN_TRIGGER_EVERY_N = 1
 DEFAULT_SPIN_TRIGGER_CHANCE = Decimal("1")
+DEFAULT_ANSWER_BASE_VALUES = {
+    "again": Decimal("0"),
+    "hard": Decimal("0.5"),
+    "good": Decimal("1"),
+    "easy": Decimal("1.5"),
+}
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,7 @@ class SlotMachineDefinition:
     slot_faces: dict[str, int]
     slot_double_multipliers: dict[str, Decimal]
     slot_triple_multipliers: dict[str, Decimal]
+    answer_base_values: dict[str, Decimal]
     slot_probability_summary: "SlotProbabilitySummary"
 
 
@@ -83,6 +90,8 @@ class SlotProbabilitySummary:
     no_match_probability: Decimal
     hit_probability: Decimal
     expected_multiplier: Decimal
+    expected_again_payout: Decimal
+    expected_hard_payout: Decimal
     expected_good_payout: Decimal
     expected_easy_payout: Decimal
 
@@ -97,6 +106,7 @@ class SlotMachineConfig:
     slot_faces: dict[str, int]
     slot_double_multipliers: dict[str, Decimal]
     slot_triple_multipliers: dict[str, Decimal]
+    answer_base_values: dict[str, Decimal]
     slot_probability_summary: SlotProbabilitySummary
     spin_animation_duration_ms: int
     spin_trigger_every_n: int
@@ -169,6 +179,19 @@ def _default_machine_label(profile_name: str, index: int) -> str:
     if cleaned:
         return cleaned.title()
     return f"Machine {index}"
+
+
+def _load_answer_base_values(
+    raw: dict | None, *, decimal_places: int
+) -> dict[str, Decimal]:
+    source = raw if isinstance(raw, dict) else {}
+    values: dict[str, Decimal] = {}
+    for answer_key, default_value in DEFAULT_ANSWER_BASE_VALUES.items():
+        values[answer_key] = quantize_decimal(
+            to_decimal(source.get(answer_key), default_value),
+            decimal_places,
+        )
+    return values
 
 
 def _normalize_machine_key(raw_value, *, index: int, used_keys: set[str]) -> str:
@@ -261,6 +284,7 @@ def _build_probability_summary(
     slot_faces: dict[str, int],
     slot_double_multipliers: dict[str, Decimal],
     slot_triple_multipliers: dict[str, Decimal],
+    answer_base_values: dict[str, Decimal],
     decimal_places: int,
 ) -> SlotProbabilitySummary:
     symbols = _sorted_slot_symbols(slot_faces)
@@ -322,9 +346,20 @@ def _build_probability_summary(
         no_match_probability=no_match_probability,
         hit_probability=hit_probability,
         expected_multiplier=expected_multiplier,
-        expected_good_payout=expected_multiplier,
+        expected_again_payout=quantize_decimal(
+            expected_multiplier_raw * answer_base_values["again"],
+            decimal_places,
+        ),
+        expected_hard_payout=quantize_decimal(
+            answer_base_values["hard"],
+            decimal_places,
+        ),
+        expected_good_payout=quantize_decimal(
+            expected_multiplier_raw * answer_base_values["good"],
+            decimal_places,
+        ),
         expected_easy_payout=quantize_decimal(
-            expected_multiplier_raw * Decimal("2"),
+            expected_multiplier_raw * answer_base_values["easy"],
             decimal_places,
         ),
     )
@@ -355,6 +390,7 @@ def _build_machine_definition(
     slot_faces: dict[str, int],
     slot_double_multipliers: dict[str, Decimal],
     slot_triple_multipliers: dict[str, Decimal],
+    answer_base_values: dict[str, Decimal],
     probability_summary: SlotProbabilitySummary,
     used_keys: set[str],
 ) -> SlotMachineDefinition:
@@ -376,6 +412,7 @@ def _build_machine_definition(
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
+        answer_base_values=answer_base_values,
         slot_probability_summary=probability_summary,
     )
 
@@ -421,12 +458,17 @@ def config_from_raw(
         symbols=symbols,
         decimal_places=decimal_places,
     )
+    answer_base_values = _load_answer_base_values(
+        raw.get("answer_base_values"),
+        decimal_places=decimal_places,
+    )
     probability_summary = _build_probability_summary(
         profile_name=profile_name,
         profile_path=resolved_profile_path,
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
+        answer_base_values=answer_base_values,
         decimal_places=decimal_places,
     )
     used_keys: set[str] = set()
@@ -441,6 +483,7 @@ def config_from_raw(
             slot_faces=slot_faces,
             slot_double_multipliers=slot_double_multipliers,
             slot_triple_multipliers=slot_triple_multipliers,
+            answer_base_values=answer_base_values,
             probability_summary=probability_summary,
             used_keys=used_keys,
         )
@@ -463,6 +506,7 @@ def config_from_raw(
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
+        answer_base_values=answer_base_values,
         slot_probability_summary=probability_summary,
         spin_animation_duration_ms=_spin_animation_duration_ms(
             raw.get("spin_animation_duration_ms")

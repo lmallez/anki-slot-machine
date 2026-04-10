@@ -40,6 +40,21 @@ def load_test_config(*, profile_overrides=None, **config_overrides):
 
 
 class ConfigProfileTests(unittest.TestCase):
+    def test_answer_base_values_load_as_signed_decimals(self) -> None:
+        config = load_test_config(
+            answer_base_values={
+                "again": -1.25,
+                "hard": 0.5,
+                "good": -0.75,
+                "easy": 2.5,
+            }
+        )
+
+        self.assertEqual(config.answer_base_values["again"], Decimal("-1.25"))
+        self.assertEqual(config.answer_base_values["hard"], Decimal("0.50"))
+        self.assertEqual(config.answer_base_values["good"], Decimal("-0.75"))
+        self.assertEqual(config.answer_base_values["easy"], Decimal("2.50"))
+
     def test_machine_list_uses_one_shared_profile_for_all_windows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             shared_profile_path = Path(tmp_dir) / "shared.json"
@@ -123,6 +138,31 @@ class ConfigProfileTests(unittest.TestCase):
         self.assertEqual(
             quantize_decimal(expected, config.decimal_places),
             summary.expected_multiplier,
+        )
+        self.assertEqual(
+            summary.expected_again_payout,
+            quantize_decimal(
+                expected * config.answer_base_values["again"],
+                config.decimal_places,
+            ),
+        )
+        self.assertEqual(
+            summary.expected_hard_payout,
+            config.answer_base_values["hard"],
+        )
+        self.assertEqual(
+            summary.expected_good_payout,
+            quantize_decimal(
+                expected * config.answer_base_values["good"],
+                config.decimal_places,
+            ),
+        )
+        self.assertEqual(
+            summary.expected_easy_payout,
+            quantize_decimal(
+                expected * config.answer_base_values["easy"],
+                config.decimal_places,
+            ),
         )
 
     def test_all_zero_faces_fall_back_to_default_profile_faces(self) -> None:

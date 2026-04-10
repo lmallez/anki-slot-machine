@@ -35,6 +35,7 @@ class SpinResult:
     reels: tuple[str, str, str]
     is_win: bool
     did_spin: bool
+    no_spin: bool
     line_hit: bool
     slot_multiplier: Decimal
     matched_symbol: str | None
@@ -62,6 +63,7 @@ class SpinResult:
             "reels": list(self.reels),
             "is_win": self.is_win,
             "did_spin": self.did_spin,
+            "no_spin": self.no_spin,
             "line_hit": self.line_hit,
             "slot_multiplier": format_decimal(self.slot_multiplier, decimal_places),
             "matched_symbol": self.matched_symbol,
@@ -94,6 +96,7 @@ class RoundSpinResult:
     reels: tuple[str, str, str]
     is_win: bool
     did_spin: bool
+    no_spin: bool
     line_hit: bool
     slot_multiplier: Decimal
     matched_symbol: str | None
@@ -120,6 +123,7 @@ class RoundSpinResult:
             "reels": list(self.reels),
             "is_win": self.is_win,
             "did_spin": self.did_spin,
+            "no_spin": self.no_spin,
             "line_hit": self.line_hit,
             "slot_multiplier": format_decimal(self.slot_multiplier, decimal_places),
             "matched_symbol": self.matched_symbol,
@@ -434,6 +438,41 @@ def _headline_symbol(symbol: str | None) -> str:
     return symbol.replace("_", " ").title()
 
 
+def _signed_amount(amount: Decimal, decimal_places: int) -> str:
+    value = format_decimal(abs(amount), decimal_places)
+    if amount > ZERO:
+        return f"+${value}"
+    if amount < ZERO:
+        return f"-${value}"
+    return f"${value}"
+
+
+def _clamp_negative_change(change: Decimal, *, balance_before: Decimal) -> Decimal:
+    if change >= ZERO:
+        return change
+    return max(-balance_before, change)
+
+
+def _configured_base_value(
+    config: SlotMachineConfig | SlotMachineDefinition,
+    *,
+    answer_key: str,
+    bet: Decimal,
+) -> Decimal:
+    if answer_key == "again":
+        fallback = ZERO
+    elif answer_key == "hard":
+        fallback = Decimal("0.5")
+    elif answer_key == "easy":
+        fallback = Decimal("1.5")
+    else:
+        fallback = Decimal("1")
+    return quantize_decimal(
+        config.answer_base_values.get(answer_key, fallback),
+        config.decimal_places,
+    )
+
+
 def build_spin_result(
     config: SlotMachineConfig | SlotMachineDefinition,
     *,
@@ -445,26 +484,32 @@ def build_spin_result(
     previous_reel_positions: tuple[int, int, int] | list[int] | None = None,
     did_spin_override: bool | None = None,
 ) -> SpinResult:
+    configured_base_reward = _configured_base_value(
+        config,
+        answer_key=answer_key,
+        bet=bet,
+    )
     did_spin = (
         bool(did_spin_override)
         if did_spin_override is not None
-        else answer_key in {"again", "good", "easy"}
+        else configured_base_reward != ZERO
     )
+    if configured_base_reward == ZERO:
+        did_spin = False
+    no_spin = not did_spin
     strip = build_reel_strip(config)
     reel_start_positions = normalize_reel_positions(config, previous_reel_positions)
     reel_positions = reel_start_positions
     reel_step_counts = (0, 0, 0)
     reels = visible_reels_for_positions(config, reel_positions)
     slot_multiplier = ZERO
-    payout = Decimal("0")
+    payout = ZERO
     line_hit = False
-    base_reward = Decimal("0")
-    slot_bonus = Decimal("0")
+    base_reward = configured_base_reward
+    slot_bonus = ZERO
     matched_symbol = None
     match_count = 0
-
-    if answer_key == "again":
-        base_reward = quantize_decimal(bet, config.decimal_places)
+    if did_spin:
         reel_positions = spin_reel_positions(config, rng=rng)
         reels = visible_reels_for_positions(config, reel_positions)
         end_positions: list[int] = []
@@ -482,98 +527,50 @@ def build_spin_result(
         reel_step_counts = tuple(step_counts)  # type: ignore[assignment]
         slot_multiplier, matched_symbol, match_count = evaluate_reels(config, reels)
         line_hit = match_count == 3
-        raw_loss = quantize_decimal(
+        raw_change = quantize_decimal(
             base_reward * slot_multiplier,
             config.decimal_places,
         )
-        payout = min(balance_before, raw_loss)
-        payout = quantize_decimal(payout, config.decimal_places)
-        slot_bonus = quantize_decimal(
-            max(ZERO, payout - base_reward),
-            config.decimal_places,
-        )
-        net_change = quantize_decimal(-payout, config.decimal_places)
-        if matched_symbol and match_count == 3:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} loses "
-                f"${format_decimal(payout, config.decimal_places)} on "
-                f"{_headline_symbol(matched_symbol)} "
-                f"x{format_decimal(slot_multiplier, config.decimal_places)}"
-            )
-        elif matched_symbol and match_count == 2:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} loses "
-                f"${format_decimal(payout, config.decimal_places)} on a pair of "
-                f"{_headline_symbol(matched_symbol)}"
-            )
-        else:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} loses "
-                f"${format_decimal(payout, config.decimal_places)}"
-            )
-        is_win = False
     else:
-        if answer_key == "hard":
-            base_reward = Decimal("0")
-        elif did_spin:
-            base_reward = Decimal("2") if answer_key == "easy" else Decimal("1")
-        else:
-            base_reward = ZERO
-        base_reward = quantize_decimal(base_reward, config.decimal_places)
-        if did_spin:
-            reel_positions = spin_reel_positions(config, rng=rng)
-            reels = visible_reels_for_positions(config, reel_positions)
-            end_positions = []
-            step_counts = []
-            for reel_index, target_position in enumerate(reel_positions):
-                end_position, step_count = advance_reel_to_position(
-                    strip,
-                    start_position=reel_start_positions[reel_index],
-                    target_position=target_position,
-                    min_steps=(len(strip) * 2)
-                    + 9
-                    + (reel_index * max(4, len(strip) // 3)),
-                )
-                end_positions.append(end_position)
-                step_counts.append(step_count)
-            reel_positions = tuple(end_positions)  # type: ignore[assignment]
-            reel_step_counts = tuple(step_counts)  # type: ignore[assignment]
-            slot_multiplier, matched_symbol, match_count = evaluate_reels(config, reels)
-            line_hit = match_count == 3
-        else:
-            reels = visible_reels_for_positions(config, reel_positions)
-            slot_multiplier = ZERO
+        raw_change = ZERO
 
-        payout = quantize_decimal(
-            base_reward * slot_multiplier,
-            config.decimal_places,
-        )
-        slot_bonus = quantize_decimal(
+    payout = quantize_decimal(
+        _clamp_negative_change(raw_change, balance_before=balance_before),
+        config.decimal_places,
+    )
+    slot_bonus = (
+        quantize_decimal(
             payout - base_reward,
             config.decimal_places,
         )
-        net_change = payout
-        if did_spin and matched_symbol and match_count == 3:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} hits {_headline_symbol(matched_symbol)} "
-                f"x{format_decimal(slot_multiplier, config.decimal_places)} "
-                f"for ${format_decimal(payout, config.decimal_places)}"
-            )
-        elif did_spin and matched_symbol and match_count == 2:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} lands a pair of {_headline_symbol(matched_symbol)} "
-                f"for ${format_decimal(payout, config.decimal_places)}"
-            )
-        elif answer_key == "hard":
-            headline = f"{ANSWER_LABELS[answer_key]} keeps the balance"
-        elif payout == ZERO:
-            headline = f"{ANSWER_LABELS[answer_key]} waits for the next spin"
-        else:
-            headline = (
-                f"{ANSWER_LABELS[answer_key]} earns "
-                f"${format_decimal(payout, config.decimal_places)}"
-            )
-        is_win = payout > ZERO
+        if did_spin
+        else ZERO
+    )
+    net_change = payout
+    if did_spin and matched_symbol and match_count == 3:
+        headline = (
+            f"{ANSWER_LABELS[answer_key]} hits {_headline_symbol(matched_symbol)} "
+            f"x{format_decimal(slot_multiplier, config.decimal_places)} "
+            f"for {_signed_amount(net_change, config.decimal_places)}"
+        )
+    elif did_spin and matched_symbol and match_count == 2:
+        headline = (
+            f"{ANSWER_LABELS[answer_key]} lands a pair of {_headline_symbol(matched_symbol)} "
+            f"for {_signed_amount(net_change, config.decimal_places)}"
+        )
+    elif net_change > ZERO:
+        headline = (
+            f"{ANSWER_LABELS[answer_key]} earns "
+            f"{_signed_amount(net_change, config.decimal_places)}"
+        )
+    elif net_change < ZERO:
+        headline = (
+            f"{ANSWER_LABELS[answer_key]} loses "
+            f"${format_decimal(abs(net_change), config.decimal_places)}"
+        )
+    else:
+        headline = f"{ANSWER_LABELS[answer_key]} keeps the balance"
+    is_win = payout > ZERO
 
     balance_after = quantize_decimal(
         balance_before + net_change,
@@ -597,6 +594,7 @@ def build_spin_result(
         reels=reels,
         is_win=is_win,
         did_spin=did_spin,
+        no_spin=no_spin,
         line_hit=line_hit,
         slot_multiplier=slot_multiplier,
         matched_symbol=matched_symbol,
@@ -643,6 +641,7 @@ def build_round_result(
             reels=("MISS", "MISS", "MISS"),
             is_win=False,
             did_spin=False,
+            no_spin=True,
             line_hit=False,
             slot_multiplier=ZERO,
             matched_symbol=None,
@@ -737,6 +736,7 @@ def build_round_result(
             )
 
     did_spin = any(result.did_spin for result in machine_spin_results)
+    no_spin = all(result.no_spin for result in machine_spin_results)
 
     return RoundSpinResult(
         event_id=event_id,
@@ -753,6 +753,7 @@ def build_round_result(
         reels=reels,
         is_win=net_change > ZERO,
         did_spin=did_spin,
+        no_spin=no_spin,
         line_hit=line_hit,
         slot_multiplier=slot_multiplier,
         matched_symbol=matched_symbol,

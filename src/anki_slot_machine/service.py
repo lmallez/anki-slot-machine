@@ -35,6 +35,21 @@ def _prepend_capped(items: list, entry, limit: int) -> None:
         del items[limit:]
 
 
+def _answer_base_value(config: SlotMachineConfig, answer_key: str) -> Decimal:
+    if answer_key == "again":
+        fallback = Decimal("0")
+    elif answer_key == "hard":
+        fallback = Decimal("0.5")
+    elif answer_key == "easy":
+        fallback = Decimal("1.5")
+    else:
+        fallback = Decimal("1")
+    return quantize_decimal(
+        config.answer_base_values.get(answer_key, fallback),
+        config.decimal_places,
+    )
+
+
 def _should_trigger_spin(
     *,
     answer_key: str,
@@ -42,9 +57,7 @@ def _should_trigger_spin(
     config: SlotMachineConfig,
     rng: random.Random,
 ) -> tuple[bool, int]:
-    if answer_key == "again":
-        return True, eligible_reviews_since_spin_check
-    if answer_key == "hard":
+    if _answer_base_value(config, answer_key) == Decimal("0"):
         return False, eligible_reviews_since_spin_check
 
     next_count = eligible_reviews_since_spin_check + 1
@@ -323,7 +336,7 @@ class SlotMachineService:
             balance_before=state.balance,
             rng=self._rng,
             previous_reel_positions_by_machine=state.reel_positions,
-            did_spin_override=did_spin if answer_key in {"good", "easy"} else None,
+            did_spin_override=did_spin,
         )
         dropped_history_event = (
             state.history[config.history_limit - 1]
@@ -361,8 +374,13 @@ class SlotMachineService:
             previous_trigger_count=previous_trigger_count,
             next_trigger_count=next_trigger_count,
         )
+        serialized_result = result.to_dict(config.decimal_places)
+        serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
+        serialized_result["slot_instance_key"] = addon_instance_key()
+        serialized_result["slot_instance_label"] = addon_package_name()
         state.reel_positions = next_reel_positions
         state.eligible_reviews_since_spin_check = next_trigger_count
+        state.last_result = serialized_result
 
         if is_undoable:
             state.balance = result.balance_after
@@ -371,15 +389,15 @@ class SlotMachineService:
                 for machine_result in result.machine_results
                 if machine_result.get("did_spin")
             )
-            if result.is_win:
+            if result.net_change > Decimal("0"):
                 state.total_won = quantize_decimal(
-                    state.total_won + result.payout,
+                    state.total_won + result.net_change,
                     config.decimal_places,
                 )
                 state.current_streak += 1
                 state.best_streak = max(state.best_streak, state.current_streak)
-                state.biggest_jackpot = max(state.biggest_jackpot, result.payout)
-            elif result.answer_key == "again":
+                state.biggest_jackpot = max(state.biggest_jackpot, result.net_change)
+            elif result.net_change < Decimal("0"):
                 state.total_lost = quantize_decimal(
                     state.total_lost + abs(result.net_change),
                     config.decimal_places,
@@ -393,11 +411,6 @@ class SlotMachineService:
                     state.daily_earnings.get(today, Decimal("0")) + result.net_change,
                     config.decimal_places,
                 )
-            serialized_result = result.to_dict(config.decimal_places)
-            serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
-            serialized_result["slot_instance_key"] = addon_instance_key()
-            serialized_result["slot_instance_label"] = addon_package_name()
-            state.last_result = serialized_result
             _prepend_capped(state.history, serialized_result, config.history_limit)
             _prepend_capped(
                 state.undo_history,

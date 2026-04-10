@@ -513,6 +513,14 @@
   position: relative;
 }
 
+.anki-slot-machine-breakdown-line.is-negative {
+  color: var(--loss);
+}
+
+.anki-slot-machine-breakdown-line.is-neutral {
+  color: var(--text);
+}
+
 .anki-slot-machine-breakdown-line:not(:last-child)::after {
   content: "";
   position: absolute;

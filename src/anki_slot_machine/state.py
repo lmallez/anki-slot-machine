@@ -101,6 +101,8 @@ def _normalize_event_payload(
             entry = _normalize_reel_positions_entry(normalized.get(field_name))
             if entry is not None:
                 normalized[field_name] = entry
+    if "no_spin" in normalized:
+        normalized["no_spin"] = bool(normalized.get("no_spin"))
     return normalized
 
 

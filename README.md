@@ -52,17 +52,11 @@ That’s it. That’s the product.
 
 ## 💸 Rules (very serious business)
 
-- **Again** → the slot runs and removes money instead of adding it  
-  → same machine, bad outcome
+- **Hard**, **Good**, and **Easy** → run the slot and multiply their payout (`0.5`, `1`, and `1.5` by default)  
+  → fake finance begins
 
-- **Hard** → you earn `$0`  
-  → safe, boring, respectable
-
-- **Good** → you spin and earn `$1 × multiplier`  
-  → now we’re talking
-
-- **Easy** → you spin and earn `$2 × multiplier`  
-  → risky confidence
+- **Again** → `0` by default, so no spin and no reward  
+  → but if you believe learning should involve suffering, you can make it negative in the config
 
 - **No match** → `x0`  
   → pain
@@ -126,6 +120,12 @@ Main config lives in `src/anki_slot_machine/config.json`.
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
   "spin_trigger_chance": 1.0,
+  "answer_base_values": {
+    "again": 0.0,
+    "hard": 0.5,
+    "good": 1.0,
+    "easy": 1.5
+  },
   "slot_profile_path": "slot_profiles/base.json"
 }
 ```
@@ -167,6 +167,7 @@ Useful intuition:
 - `spin_animation_duration_ms` → total reel animation budget, capped at `750`  
 - `spin_trigger_every_n` → run a spin check every `n` `Good` / `Easy` reviews  
 - `spin_trigger_chance` → chance that the spin actually happens at that check  
+- `answer_base_values` → signed per-answer base values, configurable in JSON  
 - `slot_profile_path` → which profile file the add-on loads  
 
 More detail is documented in `src/anki_slot_machine/config.md`.

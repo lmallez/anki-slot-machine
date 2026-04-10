@@ -14,6 +14,8 @@ changes Anki scheduling, intervals, or note data.
   is `1`.
 - `spin_trigger_chance`: chance to spin when that check happens, from `0.0` to
   `1.0`. Default is `1.0`.
+- `answer_base_values`: signed base value for each answer button. These values
+  can be positive, zero, or negative.
 - `slot_profile_path`: path to the shared slot profile JSON file, relative to
   the add-on root unless you provide an absolute path.
 - `machines`: list of slot machine windows to show in the reviewer. Each item
@@ -29,6 +31,12 @@ Example config:
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
   "spin_trigger_chance": 1.0,
+  "answer_base_values": {
+    "again": 0.0,
+    "hard": 0.5,
+    "good": 1.0,
+    "easy": 1.5
+  },
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {
@@ -85,22 +93,25 @@ but the configured face counts and resulting probabilities stay the same.
 
 ## Reward rules
 
-- `Again`: every machine spins and loses `$1 x multiplier`, clamped so the
-  shared balance never goes below zero.
-- `Hard`: earn `$0` with no spin.
-- `Good`: earns a base `$1`, and spins only when the configured trigger check
-  succeeds.
-- `Easy`: earns a base `$2`, and spins only when the configured trigger check
-  succeeds.
+- `Again`: applies `answer_base_values.again x multiplier` when its configured
+  base value is not `0`.
+- `Hard`: never spins and applies `answer_base_values.hard` directly.
+- `Good`: spins only when the configured trigger check succeeds, and then
+  applies `answer_base_values.good x multiplier`.
+- `Easy`: spins only when the configured trigger check succeeds, and then
+  applies `answer_base_values.easy x multiplier`.
+- Any answer with a configured base value of `0` does not spin.
+- Negative outcomes are clamped so the shared balance never goes below zero.
 - A no-match spin uses `x0`.
 - An exact pair uses the profile pair multiplier for that symbol.
 - A triple uses the profile triple multiplier for that symbol.
 
 Trigger logic:
 
-- `Again` always spins.
+- `Again` spins only when its configured base value is not `0`.
 - `Hard` never spins.
-- `Good` and `Easy` increment one shared review counter.
+- `Good` and `Easy` increment one shared review counter when their configured
+  base value is not `0`.
 - When that counter reaches `spin_trigger_every_n`, the backend rolls
   `spin_trigger_chance`.
 - The counter resets after each trigger check, whether the spin happens or not.
@@ -129,7 +140,7 @@ Tools -> Slot Machine -> Show Odds and Rewards shows:
 - per-symbol reel probability
 - per-symbol pair multiplier
 - per-symbol triple multiplier
-- expected `Good` and `Easy` payouts
+- expected answer payouts from the configured signed base values
 
 ## Persistence
 

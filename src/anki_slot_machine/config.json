@@ -4,6 +4,12 @@
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
   "spin_trigger_chance": 1.0,
+  "answer_base_values": {
+    "again": 0.0,
+    "hard": 0.5,
+    "good": 1.0,
+    "easy": 1.5
+  },
   "slot_profile_path": "slot_profiles/base.json",
   "machines": [
     {

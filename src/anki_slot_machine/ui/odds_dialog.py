@@ -68,6 +68,13 @@ class SlotMachineOddsDialog(QDialog):
             f"Shared profile: {config.slot_probability_summary.profile_name}",
             f"Profile file: {config.slot_probability_summary.profile_path}",
             (
+                "Configured answer values: "
+                f"Again {format_decimal(config.answer_base_values['again'], config.decimal_places)}, "
+                f"Hard {format_decimal(config.answer_base_values['hard'], config.decimal_places)}, "
+                f"Good {format_decimal(config.answer_base_values['good'], config.decimal_places)}, "
+                f"Easy {format_decimal(config.answer_base_values['easy'], config.decimal_places)}"
+            ),
+            (
                 "Aggregate expected Good payout per review: "
                 f"${format_decimal(aggregate_good, config.decimal_places)}"
             ),
@@ -90,6 +97,14 @@ class SlotMachineOddsDialog(QDialog):
                 f"Any pair probability: {_percent(summary.total_double_probability)}",
                 f"Any triple probability: {_percent(summary.total_triple_probability)}",
                 f"Any hit probability: {_percent(summary.hit_probability)}",
+                (
+                    "Expected Again payout: "
+                    f"${format_decimal(summary.expected_again_payout, config.decimal_places)}"
+                ),
+                (
+                    "Expected Hard payout: "
+                    f"${format_decimal(summary.expected_hard_payout, config.decimal_places)}"
+                ),
                 (
                     "Expected Good payout: "
                     f"${format_decimal(summary.expected_good_payout, config.decimal_places)}"

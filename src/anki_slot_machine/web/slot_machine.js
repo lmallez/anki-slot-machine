@@ -953,6 +953,30 @@
     view.els.status.textContent = text;
   }
 
+  function isNoSpinLikeResult(result) {
+    if (!result) {
+      return false;
+    }
+    if (result.no_spin) {
+      return true;
+    }
+    if (result.bet != null && moneyNumber(result.bet) === 0) {
+      return true;
+    }
+    if (!result.did_spin) {
+      return true;
+    }
+    return result.base_reward != null && moneyNumber(result.base_reward) === 0;
+  }
+
+  function syncNoSpinStatus(view, result) {
+    if (isNoSpinLikeResult(result)) {
+      showStatus(view, "No spin", "neutral");
+      return;
+    }
+    clearStatus(view);
+  }
+
   function burstParticles(view, tone) {
     const container = view.els.particles;
 
@@ -993,15 +1017,34 @@
     window.setTimeout(() => machine.classList.remove("is-loss"), 220);
   }
 
+  function moneyNumber(value) {
+    return Number.parseFloat(String(value == null ? 0 : value));
+  }
+
+  function signedMoney(value, options) {
+    const numericValue = moneyNumber(value);
+    const absoluteText = Math.abs(numericValue).toFixed(2);
+    const showPositive = Boolean(options && options.showPositive);
+    if (numericValue > 0) {
+      return `${showPositive ? "+" : ""}$${absoluteText}`;
+    }
+    if (numericValue < 0) {
+      return `-$${absoluteText}`;
+    }
+    return `${showPositive ? "+" : ""}$0.00`;
+  }
+
   function renderBreakdown(view, result, options) {
     const baseNode = view.els.baseNode;
     const bonusNode = view.els.bonusNode;
     const totalNode = view.els.totalNode;
     const isPending = Boolean(options && options.pending);
     const payoutValue = result && result.payout != null ? result.payout : 0;
+    const netChangeValue = result && result.net_change != null ? result.net_change : 0;
     const baseRewardValue = result && result.base_reward != null ? result.base_reward : 0;
     const slotMultiplierValue = result && result.slot_multiplier != null ? result.slot_multiplier : 0;
-    const isZeroPayout = Number.parseFloat(String(payoutValue)) === 0;
+    const netChangeNumber = moneyNumber(netChangeValue);
+    const isZeroPayout = moneyNumber(payoutValue) === 0;
 
     baseNode.className = "anki-slot-machine-breakdown-line";
     bonusNode.className = "anki-slot-machine-breakdown-line";
@@ -1016,57 +1059,27 @@
     }
 
     if (isPending) {
-      if (result.answer_key === "again") {
-        baseNode.textContent = `-$${baseRewardValue || defaultMoney}`;
-      } else {
-        baseNode.textContent = `+$${baseRewardValue}`;
-      }
+      baseNode.textContent = signedMoney(baseRewardValue, { showPositive: true });
       bonusNode.textContent = "";
       totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
       totalNode.textContent = "";
       return;
     }
 
-    if (result.answer_key === "again") {
-      baseNode.textContent = `-$${baseRewardValue || defaultMoney}`;
-      if (result.did_spin && result.matched_symbol) {
-        const symbolName = String(result.matched_symbol).toLowerCase();
-        const faceCountLabel = result.line_hit ? "3 faces" : "2 faces";
-        bonusNode.innerHTML = `
-          <span class="anki-slot-machine-multiplier">
-            ${symbolMarkup(symbolName)}
-            <span class="anki-slot-machine-multiplier-indicator">${faceCountLabel}</span>
-            <span class="anki-slot-machine-multiplier-text">x ${slotMultiplierValue}</span>
-          </span>
-        `;
-      } else {
-        bonusNode.textContent = `x ${slotMultiplierValue}`;
-      }
-      totalNode.className =
-        isZeroPayout
-          ? "anki-slot-machine-breakdown-line is-total is-neutral"
-          : "anki-slot-machine-breakdown-line is-total is-negative";
-      totalNode.textContent = `= -$${payoutValue}`;
-      return;
-    }
-
-    if (!result.did_spin) {
-      baseNode.textContent = `+$${baseRewardValue}`;
+    if (isNoSpinLikeResult(result)) {
+      baseNode.className = "anki-slot-machine-breakdown-line is-neutral";
+      bonusNode.className = "anki-slot-machine-breakdown-line is-neutral";
+      baseNode.textContent =
+        moneyNumber(baseRewardValue) === 0
+          ? signedMoney(baseRewardValue)
+          : signedMoney(baseRewardValue, { showPositive: true });
       bonusNode.textContent = "";
       totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
       totalNode.textContent = "";
       return;
     }
 
-    if (result.answer_key === "hard") {
-      baseNode.textContent = `+$${baseRewardValue}`;
-      bonusNode.textContent = `x ${slotMultiplierValue}`;
-      totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
-      totalNode.textContent = `= $${payoutValue}`;
-      return;
-    }
-
-    baseNode.textContent = `+$${baseRewardValue}`;
+    baseNode.textContent = signedMoney(baseRewardValue, { showPositive: true });
     if (result.did_spin && result.matched_symbol) {
       const symbolName = String(result.matched_symbol).toLowerCase();
       const faceCountLabel = result.line_hit ? "3 faces" : "2 faces";
@@ -1081,19 +1094,21 @@
       bonusNode.textContent = `x ${slotMultiplierValue}`;
     }
     totalNode.className =
-      isZeroPayout
-        ? "anki-slot-machine-breakdown-line is-total is-neutral"
-        : "anki-slot-machine-breakdown-line is-total is-positive";
-    totalNode.textContent = `= $${payoutValue}`;
+      netChangeNumber > 0
+        ? "anki-slot-machine-breakdown-line is-total is-positive"
+        : netChangeNumber < 0
+          ? "anki-slot-machine-breakdown-line is-total is-negative"
+          : "anki-slot-machine-breakdown-line is-total is-neutral";
+    totalNode.textContent = `= ${signedMoney(payoutValue, { showPositive: true })}`;
   }
 
   function maybeAnimate(view, result) {
     if (!result || !result.event_id) return;
 
     const payoutValue = result.payout != null ? result.payout : 0;
-    const betValue = result.bet != null ? result.bet : 0;
-    const isPositivePayout = Number.parseFloat(String(payoutValue)) > 0;
-
+    const netChangeValue = result.net_change != null ? result.net_change : payoutValue;
+    const netChangeNumber = moneyNumber(netChangeValue);
+    const tone = netChangeNumber > 0 ? "win" : netChangeNumber < 0 ? "loss" : "neutral";
     if (result.event_id === view.lastAnimatedEventId) {
       return;
     }
@@ -1102,74 +1117,35 @@
     clearAmount(view);
     clearStatus(view);
 
-    if (result.did_spin && result.animation_enabled) {
-      if (result.answer_key === "again") {
-        revealSpinResult(view, result, view.syncedReelPositions, {
-          highlight: Boolean(result.line_hit),
-          pairHighlight: true,
-          onComplete: () => {
-            renderBreakdown(view, result);
+    if (!isNoSpinLikeResult(result) && result.did_spin && result.animation_enabled) {
+      revealSpinResult(view, result, view.syncedReelPositions, {
+        highlight: Boolean(result.line_hit),
+        pairHighlight: Boolean(result.matched_symbol) && !result.line_hit,
+        onComplete: () => {
+          renderBreakdown(view, result);
+          if (netChangeNumber < 0) {
             flashLoss(view);
             burstParticles(view, "loss");
-            showAmount(
-              view,
-              `-$${payoutValue}`,
-              Number.parseFloat(String(payoutValue)) === 0 ? "neutral" : "loss",
-            );
-          },
-        });
-      } else if (result.line_hit) {
-        revealSpinResult(view, result, view.syncedReelPositions, {
-          highlight: true,
-          onComplete: () => {
-            renderBreakdown(view, result);
+          } else if (result.line_hit && netChangeNumber > 0) {
             burstParticles(view, "win");
-            showAmount(view, `+$${result.payout}`, "win");
-          },
-        });
-      } else {
-        revealSpinResult(view, result, view.syncedReelPositions, {
-          highlight: false,
-          onComplete: () => {
-            renderBreakdown(view, result);
-            showAmount(
-              view,
-              isPositivePayout ? `+$${payoutValue}` : `$${payoutValue}`,
-              isPositivePayout ? "win" : "neutral",
-            );
-          },
-        });
-      }
+          }
+          showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
+        },
+      });
       return;
     }
 
     renderStaticResult(view, result, view.syncedReelPositions);
 
-    if (!result.did_spin) {
-      showStatus(view, "No spin", "neutral");
+    if (isNoSpinLikeResult(result)) {
+      syncNoSpinStatus(view, result);
       return;
     }
-
-    if (result.answer_key === "again") {
+    if (netChangeNumber < 0) {
       flashLoss(view);
       burstParticles(view, "loss");
-      showAmount(
-        view,
-        `-$${betValue}`,
-        Number.parseFloat(String(betValue)) === 0 ? "neutral" : "loss",
-      );
-      return;
     }
-
-    if (result.answer_key === "hard") {
-      return;
-    }
-
-    showAmount(
-      view,
-      isPositivePayout ? `+$${payoutValue}` : `$${payoutValue}`,
-      isPositivePayout ? "win" : "neutral",
-    );
+    showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
   }
 
   function machineResultFor(roundResult, machineKey) {
@@ -1289,12 +1265,7 @@
         }
         renderBreakdown(view, machineResult);
         clearAmount(view);
-
-        if (machineResult && !machineResult.did_spin) {
-          showStatus(view, "No spin", "neutral");
-        } else {
-          clearStatus(view);
-        }
+        syncNoSpinStatus(view, machineResult);
 
         renderStaticResult(view, machineResult, view.syncedReelPositions);
         view.hasHydratedResult = true;
@@ -1308,19 +1279,19 @@
 
         renderBreakdown(view, machineResult);
         clearAmount(view);
-
-        if (machineResult && !machineResult.did_spin) {
-          showStatus(view, "No spin", "neutral");
-        } else {
-          clearStatus(view);
-        }
+        syncNoSpinStatus(view, machineResult);
 
         renderStaticResult(view, machineResult, view.syncedReelPositions);
         continue;
       }
 
       const shouldDelayBreakdown =
-        Boolean(machineResult && machineResult.did_spin && machineResult.animation_enabled) &&
+        Boolean(
+          machineResult &&
+            !isNoSpinLikeResult(machineResult) &&
+            machineResult.did_spin &&
+            machineResult.animation_enabled,
+        ) &&
         (machineResult.event_id !== view.lastAnimatedEventId ||
           machineResult.event_id === view.pendingBreakdownEventId);
 
@@ -1335,10 +1306,8 @@
 
       if (shouldDelayBreakdown) {
         clearStatus(view);
-      } else if (machineResult && !machineResult.did_spin) {
-        showStatus(view, "No spin", "neutral");
       } else {
-        clearStatus(view);
+        syncNoSpinStatus(view, machineResult);
       }
 
       if (

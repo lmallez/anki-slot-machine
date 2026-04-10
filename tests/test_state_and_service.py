@@ -376,7 +376,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(service.state().eligible_reviews_since_spin_check, 1)
 
     def test_loss_updates_balance_and_stats_without_touching_card_data(self) -> None:
-        config = make_config()
+        config = make_config(answer_base_values={"again": -1})
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
@@ -389,16 +389,20 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(result.card_id, 55)
         self.assertEqual(result.answer_key, "again")
         self.assertEqual(snapshot["balance"], result.to_dict(2)["balance_after"])
-        self.assertEqual(snapshot["total_lost"], result.to_dict(2)["payout"])
+        self.assertEqual(snapshot["total_lost"], "0.95")
         self.assertEqual(snapshot["spins"], 1)
 
-    def test_hard_is_neutral_and_does_not_spin(self) -> None:
+    def test_hard_is_neutral_and_does_not_spin_when_configured_to_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
+            service = self.make_service(
+                make_config(answer_base_values={"hard": 0}),
+                Path(tmp_dir) / "state.json",
+            )
             result = service.apply_review(card_id=99, ease=2, button_count=4)
             snapshot = service.stats_snapshot()
 
         self.assertEqual(result.answer_key, "hard")
+        self.assertTrue(result.no_spin)
         self.assertEqual(snapshot["balance"], "100.00")
         self.assertEqual(snapshot["total_won"], "0.00")
         self.assertEqual(snapshot["spins"], 0)
@@ -407,7 +411,10 @@ class ServiceTests(unittest.TestCase):
 
     def test_hard_no_op_does_not_create_slot_undo_or_history_entry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
+            service = self.make_service(
+                make_config(answer_base_values={"hard": 0}),
+                Path(tmp_dir) / "state.json",
+            )
             service.apply_review(card_id=99, ease=2, button_count=4)
 
             self.assertFalse(service.snapshot()["can_undo"])
@@ -419,8 +426,80 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(service.state().review_undo_stack, [])
 
-    def test_good_updates_balance_streak_and_history_with_decimal_payout(self) -> None:
+    def test_hard_uses_default_positive_value_with_spinning(self) -> None:
         config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(
+                    config.machines[0], ("SLOT_2", "SLOT_5", "SLOT_2")
+                ),
+            ):
+                result = service.apply_review(card_id=99, ease=2, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(result.answer_key, "hard")
+        self.assertTrue(result.did_spin)
+        self.assertEqual(result.payout, Decimal("0.48"))
+        self.assertEqual(snapshot["balance"], "100.48")
+        self.assertEqual(snapshot["total_won"], "0.48")
+        self.assertEqual(snapshot["spins"], 1)
+
+    def test_hard_uses_configured_signed_value_with_spinning(self) -> None:
+        config = make_config(answer_base_values={"hard": -0.5})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(
+                    config.machines[0], ("SLOT_2", "SLOT_5", "SLOT_2")
+                ),
+            ):
+                result = service.apply_review(card_id=99, ease=2, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(result.answer_key, "hard")
+        self.assertTrue(result.did_spin)
+        self.assertEqual(result.payout, Decimal("-0.48"))
+        self.assertEqual(snapshot["balance"], "99.52")
+        self.assertEqual(snapshot["total_lost"], "0.48")
+        self.assertEqual(snapshot["spins"], 1)
+
+    def test_zero_good_value_does_not_spin_or_advance_trigger_counter(self) -> None:
+        config = make_config(answer_base_values={"good": 0}, spin_trigger_every_n=2)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            first = service.apply_review(card_id=99, ease=3, button_count=4)
+            second = service.apply_review(card_id=100, ease=3, button_count=4)
+
+        self.assertFalse(first.did_spin)
+        self.assertFalse(second.did_spin)
+        self.assertTrue(first.no_spin)
+        self.assertTrue(second.no_spin)
+        self.assertEqual(first.payout, Decimal("0.00"))
+        self.assertEqual(second.payout, Decimal("0.00"))
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+
+    def test_zero_again_value_does_not_spin(self) -> None:
+        config = make_config(answer_base_values={"again": 0})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            result = service.apply_review(card_id=55, ease=1, button_count=4)
+            review_snapshot = service.snapshot()
+            snapshot = service.stats_snapshot()
+
+        self.assertFalse(result.did_spin)
+        self.assertTrue(result.no_spin)
+        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertIsNotNone(review_snapshot["last_result"])
+        self.assertEqual(review_snapshot["last_result"]["answer_key"], "again")
+        self.assertTrue(review_snapshot["last_result"]["no_spin"])
+        self.assertEqual(snapshot["spins"], 0)
+        self.assertEqual(snapshot["balance"], "100.00")
+
+    def test_good_updates_balance_streak_and_history_with_decimal_payout(self) -> None:
+        config = make_config(answer_base_values={"hard": 0})
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
@@ -496,7 +575,13 @@ class ServiceTests(unittest.TestCase):
                 return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_5", "SLOT_5", "SLOT_5")),
             ):
                 service.apply_review(card_id=2, ease=4, button_count=4)
-            service.apply_review(card_id=3, ease=2, button_count=4)
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(
+                    config.machines[0], ("SLOT_1", "SLOT_3", "SLOT_4")
+                ),
+            ):
+                service.apply_review(card_id=3, ease=2, button_count=4)
             snapshot = service.stats_snapshot()
 
         self.assertIn("lifetime_net", snapshot)
@@ -521,7 +606,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["triple_hits"], 1)
         self.assertEqual(snapshot["answer_counts"]["good"], 1)
         self.assertEqual(snapshot["answer_counts"]["easy"], 1)
-        self.assertEqual(snapshot["answer_counts"]["hard"], 0)
+        self.assertEqual(snapshot["answer_counts"]["hard"], 1)
         self.assertEqual(snapshot["worst_loss"], "0.00")
 
     def test_stats_snapshot_recent_windows_include_context_and_counts(self) -> None:
@@ -603,6 +688,21 @@ class ServiceTests(unittest.TestCase):
         )
         self.assertEqual(snapshot["spins"], 1)
 
+    def test_negative_good_value_counts_as_loss(self) -> None:
+        config = make_config(answer_base_values={"good": -1})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(config, Path(tmp_dir) / "state.json")
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(config.machines[0], ("SLOT_2", "SLOT_5", "SLOT_2")),
+            ):
+                result = service.apply_review(card_id=77, ease=3, button_count=4)
+            snapshot = service.stats_snapshot()
+
+        self.assertEqual(result.payout, Decimal("-0.95"))
+        self.assertEqual(snapshot["total_lost"], "0.95")
+        self.assertEqual(snapshot["total_won"], "0.00")
+
     def test_multi_machine_round_aggregates_into_shared_balance_and_history(self) -> None:
         config = make_multi_machine_config()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -626,7 +726,10 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["history"][0]["machine_results"][1]["machine_key"], "beta")
 
     def test_multi_machine_again_cannot_overdraw_shared_bankroll(self) -> None:
-        config = make_multi_machine_config(starting_balance=2)
+        config = make_multi_machine_config(
+            starting_balance=2,
+            answer_base_values={"again": -1},
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             with patch(
@@ -639,9 +742,9 @@ class ServiceTests(unittest.TestCase):
                 result = service.apply_review(card_id=5, ease=1, button_count=4)
             snapshot = service.stats_snapshot()
 
-        self.assertEqual(result.payout, Decimal("2.00"))
+        self.assertEqual(result.payout, Decimal("-2.00"))
         self.assertEqual(result.balance_after, Decimal("0.00"))
-        self.assertEqual(result.machine_results[0]["payout"], "2.00")
+        self.assertEqual(result.machine_results[0]["payout"], "-2.00")
         self.assertEqual(result.machine_results[1]["payout"], "0.00")
         self.assertEqual(snapshot["balance"], "0.00")
 
@@ -683,7 +786,7 @@ class ServiceTests(unittest.TestCase):
             self.assertFalse(service.undo_last_review())
 
     def test_no_op_review_does_not_consume_previous_real_slot_undo(self) -> None:
-        config = make_config()
+        config = make_config(answer_base_values={"hard": 0})
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_file = Path(tmp_dir) / "state.json"
             service = self.make_service(config, state_file)
@@ -697,9 +800,13 @@ class ServiceTests(unittest.TestCase):
             state_after_real_review = service.snapshot()
 
             service.apply_review(card_id=2, ease=2, button_count=4)
-            self.assertFalse(service.snapshot()["can_undo"])
+            after_no_op_snapshot = service.snapshot()
+            self.assertFalse(after_no_op_snapshot["can_undo"])
             self.assertFalse(service.undo_last_review())
-            self.assertEqual(service.snapshot(), state_after_real_review)
+            self.assertEqual(after_no_op_snapshot["balance"], state_after_real_review["balance"])
+            self.assertNotEqual(after_no_op_snapshot["last_result"], state_after_real_review["last_result"])
+            self.assertEqual(after_no_op_snapshot["last_result"]["answer_key"], "hard")
+            self.assertTrue(after_no_op_snapshot["last_result"]["no_spin"])
 
             self.assertTrue(service.undo_last_review())
 
@@ -750,10 +857,10 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(len(service.state().undo_history), UNDO_HISTORY_LIMIT)
         self.assertEqual(len(service.state().review_undo_stack), UNDO_HISTORY_LIMIT)
 
-    def test_again_uses_fixed_one_dollar_stake_even_at_low_balance(self) -> None:
+    def test_again_uses_configured_signed_value_even_at_low_balance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(
-                make_config(starting_balance=2),
+                make_config(starting_balance=2, answer_base_values={"again": -1}),
                 Path(tmp_dir) / "state.json",
             )
             config = service.config()
@@ -764,7 +871,7 @@ class ServiceTests(unittest.TestCase):
                 result = service.apply_review(card_id=3, ease=1, button_count=4)
             snapshot = service.snapshot()
 
-        self.assertEqual(result.base_reward, Decimal("1.00"))
+        self.assertEqual(result.base_reward, Decimal("-1.00"))
         self.assertEqual(result.balance_after, Decimal("0.00"))
         self.assertEqual(snapshot["balance"], "0.00")
 

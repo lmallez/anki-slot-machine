@@ -272,7 +272,7 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(game_module.neutral_reels(config), ("SLOT_1", "SLOT_2", "SLOT_3"))
 
     def test_spin_result_for_again_spins_and_uses_loss_multiplier(self) -> None:
-        config = make_config()
+        config = make_config(answer_base_values={"again": -1})
         strip = game_module.build_reel_strip(config)
         reel_positions = (
             strip.index("SLOT_2"),
@@ -296,17 +296,18 @@ class RewardTests(unittest.TestCase):
         self.assertTrue(result.did_spin)
         self.assertTrue(result.animation_enabled)
         self.assertEqual(result.reels, ("SLOT_2", "SLOT_5", "SLOT_2"))
-        self.assertEqual(result.base_reward, Decimal("1.00"))
+        self.assertEqual(result.base_reward, Decimal("-1.00"))
         self.assertEqual(result.matched_symbol, "SLOT_2")
         self.assertEqual(
             result.slot_multiplier,
             config.slot_double_multipliers["SLOT_2"],
         )
-        self.assertEqual(result.net_change, -result.payout)
-        self.assertEqual(result.balance_after, Decimal("100.00") - result.payout)
+        self.assertEqual(result.payout, Decimal("-0.95"))
+        self.assertEqual(result.net_change, result.payout)
+        self.assertEqual(result.balance_after, Decimal("100.00") + result.payout)
 
     def test_spin_result_for_again_cannot_take_balance_below_zero(self) -> None:
-        config = make_config()
+        config = make_config(answer_base_values={"again": -1})
         strip = game_module.build_reel_strip(config)
         reel_positions = (
             strip.index("SLOT_4"),
@@ -326,12 +327,50 @@ class RewardTests(unittest.TestCase):
                 balance_before=Decimal("1.50"),
                 rng=random.Random(2),
             )
-        self.assertEqual(result.payout, Decimal("1.50"))
+        self.assertEqual(result.payout, Decimal("-1.50"))
         self.assertEqual(result.net_change, Decimal("-1.50"))
         self.assertEqual(result.balance_after, Decimal("0.00"))
 
-    def test_spin_result_for_hard_is_neutral(self) -> None:
-        config = make_config()
+    def test_spin_result_for_again_with_zero_base_does_not_spin(self) -> None:
+        config = make_config(answer_base_values={"again": 0})
+        result = game_module.build_spin_result(
+            config,
+            card_id=42,
+            answer_key="again",
+            bet=Decimal("1.00"),
+            balance_before=Decimal("100.00"),
+            rng=random.Random(2),
+        )
+
+        self.assertFalse(result.did_spin)
+        self.assertTrue(result.no_spin)
+        self.assertEqual(result.base_reward, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.reel_step_counts, (0, 0, 0))
+
+    def test_spin_result_for_again_without_spin_override_is_a_no_op(self) -> None:
+        config = make_config(answer_base_values={"again": -1})
+        previous_positions = (0, 35, 60)
+        result = game_module.build_spin_result(
+            config,
+            card_id=42,
+            answer_key="again",
+            bet=Decimal("1.00"),
+            balance_before=Decimal("100.00"),
+            rng=random.Random(2),
+            previous_reel_positions=previous_positions,
+            did_spin_override=False,
+        )
+
+        self.assertFalse(result.did_spin)
+        self.assertTrue(result.no_spin)
+        self.assertEqual(result.base_reward, Decimal("-1.00"))
+        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.reel_positions, previous_positions)
+        self.assertEqual(result.reel_step_counts, (0, 0, 0))
+
+    def test_spin_result_for_hard_is_neutral_when_configured_to_zero(self) -> None:
+        config = make_config(answer_base_values={"hard": 0})
         result = game_module.build_spin_result(
             config,
             card_id=42,
@@ -344,25 +383,83 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.net_change, Decimal("0.00"))
         self.assertEqual(result.balance_after, Decimal("100.00"))
         self.assertFalse(result.did_spin)
+        self.assertTrue(result.no_spin)
         self.assertEqual(result.base_reward, Decimal("0.00"))
         self.assertEqual(result.slot_bonus, Decimal("0.00"))
         self.assertIsNone(result.matched_symbol)
 
-    def test_spin_result_for_hard_preserves_reel_positions(self) -> None:
+    def test_spin_result_for_hard_uses_default_positive_base_value(self) -> None:
+        config = make_config()
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
+        with patch.object(
+            game_module,
+            "spin_reel_positions",
+            return_value=reel_positions,
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="hard",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("100.00"),
+                rng=random.Random(2),
+            )
+
+        self.assertTrue(result.did_spin)
+        self.assertEqual(result.base_reward, Decimal("0.50"))
+        self.assertEqual(result.payout, Decimal("0.48"))
+        self.assertEqual(result.balance_after, Decimal("100.48"))
+
+    def test_spin_result_for_hard_uses_configured_signed_base_value(self) -> None:
+        config = make_config(answer_base_values={"hard": -0.5})
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
+        with patch.object(
+            game_module,
+            "spin_reel_positions",
+            return_value=reel_positions,
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="hard",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("100.00"),
+                rng=random.Random(2),
+            )
+
+        self.assertTrue(result.did_spin)
+        self.assertEqual(result.base_reward, Decimal("-0.50"))
+        self.assertEqual(result.payout, Decimal("-0.48"))
+        self.assertEqual(result.balance_after, Decimal("99.52"))
+
+    def test_spin_result_without_spin_preserves_reel_positions(self) -> None:
         config = make_config()
         previous_positions = (0, 35, 60)
         result = game_module.build_spin_result(
-          config,
-          card_id=42,
-          answer_key="hard",
-          bet=Decimal("1.00"),
-          balance_before=Decimal("100.00"),
-          rng=random.Random(2),
-          previous_reel_positions=previous_positions,
+            config,
+            card_id=42,
+            answer_key="hard",
+            bet=Decimal("1.00"),
+            balance_before=Decimal("100.00"),
+            rng=random.Random(2),
+            previous_reel_positions=previous_positions,
+            did_spin_override=False,
         )
         self.assertEqual(result.reel_start_positions, previous_positions)
         self.assertEqual(result.reel_positions, previous_positions)
         self.assertEqual(result.reel_step_counts, (0, 0, 0))
+        self.assertEqual(result.base_reward, Decimal("0.50"))
+        self.assertEqual(result.payout, Decimal("0.00"))
         self.assertEqual(
             result.reels,
             game_module.visible_reels_for_positions(config, previous_positions),
@@ -457,6 +554,47 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.payout, Decimal("0.00"))
         self.assertFalse(result.is_win)
 
+    def test_spin_result_for_good_can_be_negative_when_configured(self) -> None:
+        config = make_config(answer_base_values={"good": -1})
+        strip = game_module.build_reel_strip(config)
+        reel_positions = (
+            strip.index("SLOT_2"),
+            strip.index("SLOT_5"),
+            strip.index("SLOT_2"),
+        )
+        with patch.object(
+            game_module,
+            "spin_reel_positions",
+            return_value=reel_positions,
+        ):
+            result = game_module.build_spin_result(
+                config,
+                card_id=42,
+                answer_key="good",
+                bet=Decimal("1.00"),
+                balance_before=Decimal("100.00"),
+                rng=random.Random(2),
+            )
+
+        self.assertEqual(result.base_reward, Decimal("-1.00"))
+        self.assertEqual(result.payout, Decimal("-0.95"))
+        self.assertFalse(result.is_win)
+
+    def test_spin_result_for_good_with_zero_base_does_not_spin(self) -> None:
+        config = make_config(answer_base_values={"good": 0})
+        result = game_module.build_spin_result(
+            config,
+            card_id=42,
+            answer_key="good",
+            bet=Decimal("1.00"),
+            balance_before=Decimal("100.00"),
+            rng=random.Random(2),
+        )
+
+        self.assertFalse(result.did_spin)
+        self.assertEqual(result.base_reward, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("0.00"))
+
     def test_spin_result_tracks_reel_positions_for_real_rotation(self) -> None:
         config = make_config()
         previous_positions = (0, 35, 60)
@@ -487,7 +625,7 @@ class RewardTests(unittest.TestCase):
             result.reels,
         )
 
-    def test_spin_result_for_easy_uses_double_base_times_multiplier(self) -> None:
+    def test_spin_result_for_easy_uses_default_base_times_multiplier(self) -> None:
         config = make_config()
         strip = game_module.build_reel_strip(config)
         reel_positions = (
@@ -514,10 +652,10 @@ class RewardTests(unittest.TestCase):
             result.slot_multiplier,
             config.slot_triple_multipliers["SLOT_4"],
         )
-        self.assertEqual(result.base_reward, Decimal("2.00"))
+        self.assertEqual(result.base_reward, Decimal("1.50"))
         self.assertEqual(
             result.payout,
-            (Decimal("2.00") * config.slot_triple_multipliers["SLOT_4"]).quantize(
+            (Decimal("1.50") * config.slot_triple_multipliers["SLOT_4"]).quantize(
                 Decimal("0.01")
             ),
         )

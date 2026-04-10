@@ -141,13 +141,12 @@ def _summary_sentence(summary: dict) -> str:
 
 
 def _trade_commentary(event: dict) -> str:
+    net_change = Decimal(str(event.get("net_change", "0")))
     if _has_multiple_machine_results(event):
         machine_results = _machine_results(event)
         hit_count = sum(1 for result in machine_results if result.get("matched_symbol"))
         triple_count = sum(1 for result in machine_results if result.get("line_hit"))
-        if str(event.get("answer_key", "")) == "hard":
-            return "holds across the floor"
-        if str(event.get("answer_key", "")) == "again":
+        if net_change < Decimal("0"):
             if triple_count:
                 return "broad liquidation"
             if hit_count:
@@ -168,9 +167,7 @@ def _trade_commentary(event: dict) -> str:
     triple = bool(event.get("line_hit"))
     payout_text = str(event.get("payout", "0"))
 
-    if answer == "hard":
-        return "holds"
-    if answer == "again":
+    if net_change < Decimal("0"):
         if triple:
             return "full liquidation"
         if matched:
@@ -191,16 +188,18 @@ def _trade_commentary(event: dict) -> str:
 
 def _calculation_strip(event: dict) -> str:
     if _has_multiple_machine_results(event):
-        answer = str(event.get("answer_key", ""))
-        if answer == "hard":
-            return ""
         base = str(event.get("base_reward", "0"))
         change = _signed_money(str(event.get("net_change", "0")))
         return f"${base} total -> {change}"
 
     answer = str(event.get("answer_key", ""))
-    if answer == "hard":
-        return ""
+    did_spin = bool(event.get("did_spin"))
+    if not did_spin:
+        base = event.get("base_reward")
+        change = event.get("net_change")
+        if base is None or change is None:
+            return ""
+        return f"${base} -> {_signed_money(str(change))}"
 
     raw_base = event.get("base_reward")
     raw_multiplier = event.get("slot_multiplier")
@@ -211,8 +210,6 @@ def _calculation_strip(event: dict) -> str:
     base = str(raw_base)
     multiplier = str(raw_multiplier)
     change = _signed_money(str(raw_change))
-    if answer == "again":
-        return f"-${base} x {multiplier} = {change}"
     return f"${base} x {multiplier} = {change}"
 
 
