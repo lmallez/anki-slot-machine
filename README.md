@@ -105,6 +105,7 @@ It just runs the profile you give it.
 
 ## Short Changelog
 
+- `v0.0.7` One-slot default, collapsed controls, configurable spin triggering, and lighter DOM usage.
 - `v0.0.6` Real reel rotation, smoother reel visuals, better timing, and no replayed spins on restore.
 - `v0.0.5` Multi-slot support with one shared bankroll and quick slot controls.
 - `v0.0.4` Stats window, better history tracking, and stronger layout/state handling.
