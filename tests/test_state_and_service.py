@@ -17,7 +17,12 @@ import anki_slot_machine.config as config_module
 import anki_slot_machine.game as game_module
 from anki_slot_machine.config import load_config
 from anki_slot_machine.service import SlotMachineService
-from anki_slot_machine.state import SlotMachineState, StateRepository
+from anki_slot_machine.state import (
+    BACKUP_SAVE_INTERVAL,
+    UNDO_HISTORY_LIMIT,
+    SlotMachineState,
+    StateRepository,
+)
 
 
 def build_profile(**overrides) -> dict:
@@ -87,6 +92,41 @@ class StateRepositoryTests(unittest.TestCase):
         self.assertEqual(backup_payload["balance"], "100.00")
         self.assertNotIn("notes", payload)
         self.assertNotIn("cards", payload)
+
+    def test_repository_defers_backup_refresh_between_intervals(self) -> None:
+        config = make_config()
+        repository = StateRepository()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            target = Path(tmp_dir) / "slot_machine_state.json"
+            backup = Path(tmp_dir) / "slot_machine_state.json.bak"
+            with patch("anki_slot_machine.state.state_path", return_value=target):
+                first_state = SlotMachineState.initial(config)
+                repository.save(first_state, config)
+                first_backup_payload = backup.read_text(encoding="utf-8")
+
+                second_state = SlotMachineState.initial(config)
+                second_state.balance = Decimal("101.00")
+                repository.save(second_state, config)
+
+                self.assertEqual(
+                    json.loads(target.read_text(encoding="utf-8"))["balance"],
+                    "101.00",
+                )
+                self.assertEqual(
+                    backup.read_text(encoding="utf-8"),
+                    first_backup_payload,
+                )
+
+                for offset in range(BACKUP_SAVE_INTERVAL - 1):
+                    next_state = SlotMachineState.initial(config)
+                    next_state.balance = Decimal(f"{102 + offset}.00")
+                    repository.save(next_state, config)
+
+                self.assertEqual(
+                    json.loads(backup.read_text(encoding="utf-8"))["balance"],
+                    f"{101 + (BACKUP_SAVE_INTERVAL - 1):.2f}",
+                )
 
     def test_repository_loads_old_integer_state_cleanly(self) -> None:
         config = make_config()
@@ -174,6 +214,95 @@ class StateRepositoryTests(unittest.TestCase):
         self.assertEqual(state.balance, Decimal("111.25"))
         self.assertEqual(state.total_won, Decimal("12.50"))
         self.assertEqual(state.history[0]["card_id"], 9)
+
+    def test_repository_drops_legacy_full_snapshot_undo_entries_on_load(self) -> None:
+        config = make_config()
+        legacy_undo_entry = {
+            "balance": "99.00",
+            "total_won": "5.00",
+            "total_lost": "1.00",
+            "spins": 3,
+            "current_streak": 1,
+            "best_streak": 2,
+            "biggest_jackpot": "5.00",
+            "daily_earnings": {"2026-04-07": "4.00"},
+            "history": [
+                {
+                    "event_id": "legacy-evt-1",
+                    "timestamp": "2026-04-07T10:00:00+09:00",
+                    "card_id": 1,
+                    "answer_key": "good",
+                    "answer_label": "Good",
+                    "bet": "1.00",
+                    "payout": "2.00",
+                    "base_reward": "1.00",
+                    "slot_bonus": "1.00",
+                    "net_change": "1.00",
+                    "balance_after": "99.00",
+                }
+            ],
+            "last_result": {
+                "event_id": "legacy-evt-1",
+                "timestamp": "2026-04-07T10:00:00+09:00",
+                "card_id": 1,
+                "answer_key": "good",
+                "answer_label": "Good",
+                "bet": "1.00",
+                "payout": "2.00",
+                "base_reward": "1.00",
+                "slot_bonus": "1.00",
+                "net_change": "1.00",
+                "balance_after": "99.00",
+            },
+            "eligible_reviews_since_spin_check": 0,
+        }
+        payload = {
+            "balance": "100.00",
+            "undo_history": [legacy_undo_entry],
+            "review_undo_stack": [True],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            target = Path(tmp_dir) / "slot_machine_state.json"
+            target.write_text(json.dumps(payload), encoding="utf-8")
+            repository = StateRepository()
+            with patch("anki_slot_machine.state.state_path", return_value=target):
+                state = repository.load(config)
+
+        self.assertEqual(state.undo_history, [])
+        self.assertEqual(state.review_undo_stack, [])
+
+    def test_restore_review_snapshot_restores_undo_internals(self) -> None:
+        config = make_config()
+        state = SlotMachineState.initial(config)
+        payload = {
+            "balance": "101.00",
+            "undo_history": [
+                {
+                    "undo_format_version": 1,
+                    "balance": "100.00",
+                    "total_won": "0.00",
+                    "total_lost": "0.00",
+                    "spins": 0,
+                    "current_streak": 0,
+                    "best_streak": 0,
+                    "biggest_jackpot": "0.00",
+                    "daily_earnings_date": "",
+                    "had_daily_earnings_entry": False,
+                    "daily_earnings_previous_value": None,
+                    "last_result": None,
+                    "reel_positions": {},
+                    "eligible_reviews_since_spin_check": 0,
+                    "dropped_history_event": None,
+                }
+            ],
+            "review_undo_stack": [True],
+        }
+
+        state.restore_review_snapshot(payload, config)
+
+        self.assertEqual(len(state.undo_history), 1)
+        self.assertEqual(state.review_undo_stack, [True])
 
 
 class ServiceTests(unittest.TestCase):
@@ -275,6 +404,20 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["spins"], 0)
         self.assertEqual(snapshot["best_streak"], 0)
         self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+
+    def test_hard_no_op_does_not_create_slot_undo_or_history_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
+            service.apply_review(card_id=99, ease=2, button_count=4)
+
+            self.assertFalse(service.snapshot()["can_undo"])
+            self.assertEqual(service.state().history, [])
+            self.assertEqual(service.state().undo_history, [])
+            self.assertEqual(service.state().daily_earnings, {})
+            self.assertEqual(service.state().review_undo_stack, [False])
+            self.assertFalse(service.undo_last_review())
+
+        self.assertEqual(service.state().review_undo_stack, [])
 
     def test_good_updates_balance_streak_and_history_with_decimal_payout(self) -> None:
         config = make_config()
@@ -378,7 +521,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["triple_hits"], 1)
         self.assertEqual(snapshot["answer_counts"]["good"], 1)
         self.assertEqual(snapshot["answer_counts"]["easy"], 1)
-        self.assertEqual(snapshot["answer_counts"]["hard"], 1)
+        self.assertEqual(snapshot["answer_counts"]["hard"], 0)
         self.assertEqual(snapshot["worst_loss"], "0.00")
 
     def test_stats_snapshot_recent_windows_include_context_and_counts(self) -> None:
@@ -538,6 +681,74 @@ class ServiceTests(unittest.TestCase):
             service = self.make_service(make_config(), Path(tmp_dir) / "state.json")
 
             self.assertFalse(service.undo_last_review())
+
+    def test_no_op_review_does_not_consume_previous_real_slot_undo(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_file = Path(tmp_dir) / "state.json"
+            service = self.make_service(config, state_file)
+            with patch(
+                "anki_slot_machine.game.spin_reel_positions",
+                return_value=reel_positions_for_symbols(
+                    config.machines[0], ("SLOT_3", "SLOT_3", "SLOT_3")
+                ),
+            ):
+                service.apply_review(card_id=1, ease=3, button_count=4)
+            state_after_real_review = service.snapshot()
+
+            service.apply_review(card_id=2, ease=2, button_count=4)
+            self.assertFalse(service.snapshot()["can_undo"])
+            self.assertFalse(service.undo_last_review())
+            self.assertEqual(service.snapshot(), state_after_real_review)
+
+            self.assertTrue(service.undo_last_review())
+
+        self.assertEqual(service.snapshot()["balance"], "100.00")
+
+    def test_persisted_undo_history_uses_compact_records(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_file = Path(tmp_dir) / "state.json"
+            service = self.make_service(config, state_file)
+            service.apply_review(card_id=1, ease=3, button_count=4)
+            service.apply_review(card_id=2, ease=3, button_count=4)
+            service.apply_review(card_id=3, ease=3, button_count=4)
+
+            payload = json.loads(state_file.read_text(encoding="utf-8"))
+
+        undo_entry = payload["undo_history"][0]
+        self.assertEqual(undo_entry["undo_format_version"], 1)
+        self.assertNotIn("history", undo_entry)
+        self.assertNotIn("undo_history", undo_entry)
+        self.assertNotIn("daily_earnings", undo_entry)
+        self.assertIn("daily_earnings_date", undo_entry)
+        self.assertIn("dropped_history_event", undo_entry)
+
+    def test_persisted_state_size_grows_roughly_linearly_across_reviews(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_file = Path(tmp_dir) / "state.json"
+            service = self.make_service(config, state_file)
+            for card_id in range(1, 11):
+                service.apply_review(card_id=card_id, ease=2, button_count=4)
+            size_after_ten = len(state_file.read_text(encoding="utf-8"))
+
+            for card_id in range(11, 21):
+                service.apply_review(card_id=card_id, ease=2, button_count=4)
+            size_after_twenty = len(state_file.read_text(encoding="utf-8"))
+
+        self.assertLess(size_after_twenty, size_after_ten * 2.5)
+
+    def test_undo_retention_is_capped_separately_from_history(self) -> None:
+        config = make_config()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_file = Path(tmp_dir) / "state.json"
+            service = self.make_service(config, state_file)
+            for card_id in range(1, UNDO_HISTORY_LIMIT + 8):
+                service.apply_review(card_id=card_id, ease=3, button_count=4)
+
+        self.assertEqual(len(service.state().undo_history), UNDO_HISTORY_LIMIT)
+        self.assertEqual(len(service.state().review_undo_stack), UNDO_HISTORY_LIMIT)
 
     def test_again_uses_fixed_one_dollar_stake_even_at_low_balance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

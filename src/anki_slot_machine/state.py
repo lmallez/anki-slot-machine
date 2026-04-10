@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -24,6 +25,9 @@ DECIMAL_STATE_FIELDS = (
     "total_lost",
     "biggest_jackpot",
 )
+UNDO_FORMAT_VERSION = 1
+UNDO_HISTORY_LIMIT = 20
+BACKUP_SAVE_INTERVAL = 20
 
 
 def _normalize_reel_positions_entry(value) -> list[int] | None:
@@ -179,6 +183,117 @@ def _normalize_state_snapshot_payload(
     return normalized
 
 
+def _normalize_undo_record_payload(
+    payload: dict | None,
+    *,
+    decimal_places: int,
+) -> dict | None:
+    if not isinstance(payload, dict):
+        return None
+    if int(payload.get("undo_format_version", 0) or 0) != UNDO_FORMAT_VERSION:
+        return None
+
+    normalized: dict[str, object] = {
+        "undo_format_version": UNDO_FORMAT_VERSION,
+    }
+    for field_name in DECIMAL_STATE_FIELDS:
+        normalized[field_name] = format_decimal(
+            parse_stored_decimal(payload.get(field_name), decimal_places),
+            decimal_places,
+        )
+
+    normalized["spins"] = max(0, int(payload.get("spins", 0)))
+    normalized["current_streak"] = max(0, int(payload.get("current_streak", 0)))
+    normalized["best_streak"] = max(0, int(payload.get("best_streak", 0)))
+
+    review_day = str(payload.get("daily_earnings_date") or "").strip()
+    had_daily_entry = bool(payload.get("had_daily_earnings_entry"))
+    normalized["daily_earnings_date"] = review_day
+    normalized["had_daily_earnings_entry"] = had_daily_entry
+    normalized["daily_earnings_previous_value"] = (
+        format_decimal(
+            parse_stored_decimal(
+                payload.get("daily_earnings_previous_value"),
+                decimal_places,
+            ),
+            decimal_places,
+        )
+        if review_day and had_daily_entry
+        else None
+    )
+    normalized["last_result"] = _normalize_event_payload(
+        payload.get("last_result"),
+        decimal_places=decimal_places,
+    )
+    normalized["reel_positions"] = _normalize_reel_positions_map(
+        payload.get("reel_positions"),
+    )
+    normalized["eligible_reviews_since_spin_check"] = max(
+        0,
+        int(payload.get("eligible_reviews_since_spin_check", 0)),
+    )
+    normalized["dropped_history_event"] = _normalize_event_payload(
+        payload.get("dropped_history_event"),
+        decimal_places=decimal_places,
+    )
+    return normalized
+
+
+def _normalize_undo_history_payload(
+    payload: list | None,
+    *,
+    decimal_places: int,
+) -> tuple[list[dict], list[bool]]:
+    if not isinstance(payload, list):
+        return [], []
+
+    normalized_entries: list[dict] = []
+    keep_flags: list[bool] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_undo_record_payload(
+            item,
+            decimal_places=decimal_places,
+        )
+        keep_flags.append(normalized is not None)
+        if normalized is not None:
+            normalized_entries.append(normalized)
+    return normalized_entries, keep_flags
+
+
+def _normalize_review_undo_stack_payload(
+    payload,
+    *,
+    undo_keep_flags: list[bool] | None = None,
+) -> list[bool]:
+    if not isinstance(payload, list):
+        return []
+
+    normalized: list[bool] = []
+    for item in payload:
+        normalized.append(bool(item))
+
+    if undo_keep_flags is None:
+        return normalized
+
+    filtered: list[bool] = []
+    undo_index = 0
+    # Only undoable reviews consume an undo-history entry, so keep the boolean
+    # stack aligned with the compact undo records that survived normalization.
+    for entry in normalized:
+        if not entry:
+            filtered.append(False)
+            continue
+        if undo_index >= len(undo_keep_flags):
+            continue
+        keep_entry = undo_keep_flags[undo_index]
+        undo_index += 1
+        if keep_entry:
+            filtered.append(True)
+    return filtered
+
+
 @dataclass
 class SlotMachineState:
     balance: Decimal
@@ -194,6 +309,7 @@ class SlotMachineState:
     reel_positions: dict[str, list[int]] = field(default_factory=dict)
     eligible_reviews_since_spin_check: int = 0
     undo_history: list[dict] = field(default_factory=list)
+    review_undo_stack: list[bool] = field(default_factory=list)
 
     @classmethod
     def initial(cls, config: SlotMachineConfig) -> "SlotMachineState":
@@ -207,6 +323,19 @@ class SlotMachineState:
             return cls.initial(config)
 
         initial = cls.initial(config)
+        undo_history, undo_keep_flags = _normalize_undo_history_payload(
+            data.get("undo_history"),
+            decimal_places=config.decimal_places,
+        )
+        review_undo_stack = _normalize_review_undo_stack_payload(
+            data.get("review_undo_stack"),
+            undo_keep_flags=undo_keep_flags,
+        )
+        if not review_undo_stack and undo_history:
+            review_undo_stack = [True] * len(undo_history)
+        undo_history = undo_history[:UNDO_HISTORY_LIMIT]
+        review_undo_stack = review_undo_stack[:UNDO_HISTORY_LIMIT]
+
         state = cls(
             balance=parse_stored_decimal(
                 data.get("balance"),
@@ -247,23 +376,21 @@ class SlotMachineState:
             eligible_reviews_since_spin_check=max(
                 0, int(data.get("eligible_reviews_since_spin_check", 0))
             ),
-            undo_history=[
-                normalized
-                for item in data.get("undo_history") or []
-                if isinstance(item, dict)
-                for normalized in [
-                    _normalize_state_snapshot_payload(
-                        item,
-                        decimal_places=config.decimal_places,
-                    )
-                ]
-                if normalized is not None
-            ],
+            undo_history=undo_history,
+            review_undo_stack=review_undo_stack,
         )
         return state
 
-    def review_snapshot(self, decimal_places: int) -> dict:
+    def build_undo_record(
+        self,
+        decimal_places: int,
+        *,
+        review_day: str,
+        dropped_history_event: dict | None,
+    ) -> dict:
+        had_daily_entry = review_day in self.daily_earnings
         return {
+            "undo_format_version": UNDO_FORMAT_VERSION,
             "balance": format_decimal(self.balance, decimal_places),
             "total_won": format_decimal(self.total_won, decimal_places),
             "total_lost": format_decimal(self.total_lost, decimal_places),
@@ -271,14 +398,17 @@ class SlotMachineState:
             "current_streak": self.current_streak,
             "best_streak": self.best_streak,
             "biggest_jackpot": format_decimal(self.biggest_jackpot, decimal_places),
-            "daily_earnings": {
-                key: format_decimal(value, decimal_places)
-                for key, value in self.daily_earnings.items()
-            },
-            "history": self.history,
-            "last_result": self.last_result,
-            "reel_positions": self.reel_positions,
+            "daily_earnings_date": review_day,
+            "had_daily_earnings_entry": had_daily_entry,
+            "daily_earnings_previous_value": (
+                format_decimal(self.daily_earnings[review_day], decimal_places)
+                if had_daily_entry
+                else None
+            ),
+            "last_result": copy.deepcopy(self.last_result),
+            "reel_positions": copy.deepcopy(self.reel_positions),
             "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
+            "dropped_history_event": copy.deepcopy(dropped_history_event),
         }
 
     def restore_review_snapshot(
@@ -301,6 +431,69 @@ class SlotMachineState:
         self.eligible_reviews_since_spin_check = (
             restored.eligible_reviews_since_spin_check
         )
+        self.undo_history = restored.undo_history
+        self.review_undo_stack = restored.review_undo_stack
+
+    def restore_review_undo(
+        self,
+        payload: dict,
+        config: SlotMachineConfig,
+    ) -> None:
+        normalized = _normalize_undo_record_payload(
+            payload,
+            decimal_places=config.decimal_places,
+        )
+        if normalized is None:
+            self.restore_review_snapshot(payload, config)
+            return
+
+        self.balance = parse_stored_decimal(
+            normalized.get("balance"),
+            config.decimal_places,
+        )
+        self.total_won = parse_stored_decimal(
+            normalized.get("total_won"),
+            config.decimal_places,
+        )
+        self.total_lost = parse_stored_decimal(
+            normalized.get("total_lost"),
+            config.decimal_places,
+        )
+        self.spins = max(0, int(normalized.get("spins", 0)))
+        self.current_streak = max(0, int(normalized.get("current_streak", 0)))
+        self.best_streak = max(0, int(normalized.get("best_streak", 0)))
+        self.biggest_jackpot = parse_stored_decimal(
+            normalized.get("biggest_jackpot"),
+            config.decimal_places,
+        )
+        self.last_result = normalized.get("last_result")
+        self.reel_positions = _normalize_reel_positions_map(
+            normalized.get("reel_positions"),
+        )
+        self.eligible_reviews_since_spin_check = max(
+            0,
+            int(normalized.get("eligible_reviews_since_spin_check", 0)),
+        )
+
+        review_day = str(normalized.get("daily_earnings_date") or "").strip()
+        had_daily_entry = bool(normalized.get("had_daily_earnings_entry"))
+        if review_day:
+            if had_daily_entry:
+                self.daily_earnings[review_day] = parse_stored_decimal(
+                    normalized.get("daily_earnings_previous_value"),
+                    config.decimal_places,
+                )
+            else:
+                self.daily_earnings.pop(review_day, None)
+
+        restored_history = self.history[1:] if self.history else []
+        dropped_history_event = normalized.get("dropped_history_event")
+        if isinstance(dropped_history_event, dict):
+            restored_history = [
+                *restored_history,
+                copy.deepcopy(dropped_history_event),
+            ]
+        self.history = restored_history[: config.history_limit]
 
     def to_dict(self, decimal_places: int) -> dict:
         return {
@@ -320,10 +513,14 @@ class SlotMachineState:
             "reel_positions": self.reel_positions,
             "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
             "undo_history": self.undo_history,
+            "review_undo_stack": self.review_undo_stack,
         }
 
 
 class StateRepository:
+    def __init__(self) -> None:
+        self._saves_since_backup = BACKUP_SAVE_INTERVAL
+
     def load(self, config: SlotMachineConfig) -> SlotMachineState:
         path = state_path()
         backup = _backup_path(path)
@@ -343,15 +540,15 @@ class StateRepository:
         backup = _backup_path(path)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            payload = (
-                json.dumps(
-                    state.to_dict(config.decimal_places),
-                    indent=2,
-                    ensure_ascii=False,
-                )
-                + "\n"
+            payload = json.dumps(
+                state.to_dict(config.decimal_places),
+                ensure_ascii=False,
+                separators=(",", ":"),
             )
             path.write_text(payload, encoding="utf-8")
-            backup.write_text(payload, encoding="utf-8")
+            self._saves_since_backup += 1
+            if not backup.exists() or self._saves_since_backup >= BACKUP_SAVE_INTERVAL:
+                backup.write_text(payload, encoding="utf-8")
+                self._saves_since_backup = 0
         except OSError as exc:
             print(f"[anki-slot-machine] Failed to save state file: {exc}")

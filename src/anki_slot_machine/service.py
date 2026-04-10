@@ -14,7 +14,7 @@ from .game import (
     default_reel_positions,
 )
 from .runtime import addon_instance_key, addon_package_name
-from .state import SlotMachineState, StateRepository
+from .state import UNDO_HISTORY_LIMIT, SlotMachineState, StateRepository
 
 MILESTONE_NAMES = (
     "Starter Stack",
@@ -27,6 +27,12 @@ MILESTONE_NAMES = (
 REVIEW_BET = Decimal("1")
 HISTORY_FORMAT_VERSION = 2
 TREND_EPSILON = Decimal("0.01")
+
+
+def _prepend_capped(items: list, entry, limit: int) -> None:
+    items.insert(0, entry)
+    if len(items) > limit:
+        del items[limit:]
 
 
 def _should_trigger_spin(
@@ -77,6 +83,23 @@ def _machine_results_for_event(event: dict) -> list[dict]:
     if isinstance(raw_results, list):
         return [item for item in raw_results if isinstance(item, dict)]
     return [event]
+
+
+def _is_undoable_slot_event(
+    *,
+    result: RoundSpinResult,
+    previous_reel_positions: dict[str, list[int]],
+    next_reel_positions: dict[str, list[int]],
+    previous_trigger_count: int,
+    next_trigger_count: int,
+) -> bool:
+    if result.did_spin:
+        return True
+    if result.net_change != Decimal("0"):
+        return True
+    if previous_trigger_count != next_trigger_count:
+        return True
+    return previous_reel_positions != next_reel_positions
 
 
 def _trend_payload(
@@ -252,6 +275,7 @@ class SlotMachineService:
         return {
             "balance": format_decimal(state.balance, config.decimal_places),
             "last_result": state.last_result,
+            "can_undo": bool(state.review_undo_stack and state.review_undo_stack[0]),
             "machines": machine_payload,
             "spin_animation_duration_ms": config.spin_animation_duration_ms,
             "card_id": card_id,
@@ -269,7 +293,10 @@ class SlotMachineService:
     ) -> RoundSpinResult:
         config = self.config()
         state = self.state()
-        previous_snapshot = state.review_snapshot(config.decimal_places)
+        previous_reel_positions = {
+            key: list(value) for key, value in state.reel_positions.items()
+        }
+        previous_trigger_count = state.eligible_reviews_since_spin_check
         bet = quantize_decimal(REVIEW_BET, config.decimal_places)
         answer_key = answer_key_for_rating(ease, button_count)
         if not config.machines:
@@ -281,6 +308,7 @@ class SlotMachineService:
                 balance_before=state.balance,
                 rng=self._rng,
             )
+        today = datetime.now().astimezone().date().isoformat()
         did_spin, next_trigger_count = _should_trigger_spin(
             answer_key=answer_key,
             eligible_reviews_since_spin_check=state.eligible_reviews_since_spin_check,
@@ -297,8 +325,20 @@ class SlotMachineService:
             previous_reel_positions_by_machine=state.reel_positions,
             did_spin_override=did_spin if answer_key in {"good", "easy"} else None,
         )
+        dropped_history_event = (
+            state.history[config.history_limit - 1]
+            if len(state.history) >= config.history_limit
+            else None
+        )
+        previous_undo_record = state.build_undo_record(
+            config.decimal_places,
+            review_day=today,
+            dropped_history_event=dropped_history_event,
+        )
 
-        next_reel_positions = {}
+        next_reel_positions = {
+            key: list(value) for key, value in previous_reel_positions.items()
+        }
         for machine_result in result.machine_results:
             machine_key = str(machine_result.get("machine_key", "")).strip()
             reel_positions = machine_result.get("reel_positions")
@@ -306,61 +346,87 @@ class SlotMachineService:
                 machine_key
                 and isinstance(reel_positions, list)
                 and len(reel_positions) == 3
+                and (
+                    machine_result.get("did_spin")
+                    or machine_key in previous_reel_positions
+                )
             ):
                 next_reel_positions[machine_key] = [
                     int(position) for position in reel_positions
                 ]
+        is_undoable = _is_undoable_slot_event(
+            result=result,
+            previous_reel_positions=previous_reel_positions,
+            next_reel_positions=next_reel_positions,
+            previous_trigger_count=previous_trigger_count,
+            next_trigger_count=next_trigger_count,
+        )
         state.reel_positions = next_reel_positions
         state.eligible_reviews_since_spin_check = next_trigger_count
 
-        state.balance = result.balance_after
-        state.spins += sum(
-            1
-            for machine_result in result.machine_results
-            if machine_result.get("did_spin")
-        )
-        if result.is_win:
-            state.total_won = quantize_decimal(
-                state.total_won + result.payout,
-                config.decimal_places,
+        if is_undoable:
+            state.balance = result.balance_after
+            state.spins += sum(
+                1
+                for machine_result in result.machine_results
+                if machine_result.get("did_spin")
             )
-            state.current_streak += 1
-            state.best_streak = max(state.best_streak, state.current_streak)
-            state.biggest_jackpot = max(state.biggest_jackpot, result.payout)
-        elif result.answer_key == "again":
-            state.total_lost = quantize_decimal(
-                state.total_lost + abs(result.net_change),
-                config.decimal_places,
-            )
-            state.current_streak = 0
-        else:
-            state.current_streak = 0
+            if result.is_win:
+                state.total_won = quantize_decimal(
+                    state.total_won + result.payout,
+                    config.decimal_places,
+                )
+                state.current_streak += 1
+                state.best_streak = max(state.best_streak, state.current_streak)
+                state.biggest_jackpot = max(state.biggest_jackpot, result.payout)
+            elif result.answer_key == "again":
+                state.total_lost = quantize_decimal(
+                    state.total_lost + abs(result.net_change),
+                    config.decimal_places,
+                )
+                state.current_streak = 0
+            else:
+                state.current_streak = 0
 
-        today = datetime.now().astimezone().date().isoformat()
-        state.daily_earnings[today] = quantize_decimal(
-            state.daily_earnings.get(today, Decimal("0")) + result.net_change,
-            config.decimal_places,
+            if result.net_change != Decimal("0"):
+                state.daily_earnings[today] = quantize_decimal(
+                    state.daily_earnings.get(today, Decimal("0")) + result.net_change,
+                    config.decimal_places,
+                )
+            serialized_result = result.to_dict(config.decimal_places)
+            serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
+            serialized_result["slot_instance_key"] = addon_instance_key()
+            serialized_result["slot_instance_label"] = addon_package_name()
+            state.last_result = serialized_result
+            _prepend_capped(state.history, serialized_result, config.history_limit)
+            _prepend_capped(
+                state.undo_history,
+                previous_undo_record,
+                UNDO_HISTORY_LIMIT,
+            )
+        _prepend_capped(
+            state.review_undo_stack,
+            is_undoable,
+            UNDO_HISTORY_LIMIT,
         )
-        serialized_result = result.to_dict(config.decimal_places)
-        serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
-        serialized_result["slot_instance_key"] = addon_instance_key()
-        serialized_result["slot_instance_label"] = addon_package_name()
-        state.last_result = serialized_result
-        state.history = [serialized_result, *state.history][: config.history_limit]
-        state.undo_history = [previous_snapshot, *state.undo_history][
-            : config.history_limit
-        ]
         self._repository.save(state, config)
         return result
 
     def undo_last_review(self) -> bool:
         config = self.config()
         state = self.state()
+        if not state.review_undo_stack:
+            return False
+        review_was_undoable = bool(state.review_undo_stack.pop(0))
+        if not review_was_undoable:
+            self._repository.save(state, config)
+            return False
         if not state.undo_history:
+            self._repository.save(state, config)
             return False
 
         previous_snapshot = state.undo_history.pop(0)
-        state.restore_review_snapshot(previous_snapshot, config)
+        state.restore_review_undo(previous_snapshot, config)
         self._repository.save(state, config)
         return True
 
