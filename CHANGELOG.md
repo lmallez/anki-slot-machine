@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - Made the `Slots` control start collapsed by default.
 - Added configurable spin cadence with `spin_trigger_every_n` and
   `spin_trigger_chance`.
+- Reduced DOM overhead by caching UI references, skipping redundant reel and
+  balance updates, and tightening particle and timer cleanup to keep the slot 
+  machine lighter during long sessions.
 
 ## [v0.0.6] - 2026-04-09
 

@@ -20,6 +20,7 @@
 
   const PREFIX = `anki-slot-machine:${INSTANCE_KEY}`;
   const SYMBOLS = ["slot_1", "slot_2", "slot_3", "slot_4", "slot_5"];
+  const SYMBOL_SET = new Set(SYMBOLS);
   const DEFAULT_WIDTH = 316;
   const DEFAULT_HEIGHT = 480;
   const WINDOW_RATIO = DEFAULT_HEIGHT / DEFAULT_WIDTH;
@@ -31,8 +32,11 @@
   const defaultMoney = "1.00";
   const defaultMultiplier = "0.00";
   const CONTROL_PANEL_STORAGE_KEY = `anki-slot-machine-control-panel-v1:${INSTANCE_KEY}`;
-  const machineViews = {};
+
+  const machineViews = Object.create(null);
+  let machineKeys = [];
   let controlPanel = null;
+  let controlPanelRefs = null;
   let closeAllConfirmOpen = false;
   let lastSyncedMachineCount = 0;
   let controlPanelCollapsed = true;
@@ -40,10 +44,14 @@
   let hasHydratedLayouts = false;
   let windowEventsBound = false;
 
+  const particleCleanupTimers = Object.create(null);
+  const trackRenderCache = Object.create(null);
+
   const requestFrame =
     typeof window.requestAnimationFrame === "function"
       ? window.requestAnimationFrame.bind(window)
       : (callback) => window.setTimeout(() => callback(Date.now()), 16);
+
   const cancelFrame =
     typeof window.cancelAnimationFrame === "function"
       ? window.cancelAnimationFrame.bind(window)
@@ -79,18 +87,16 @@
         CONTROL_PANEL_STORAGE_KEY,
         collapsed ? "collapsed" : "expanded",
       );
-    } catch (_error) {
-      // Ignore storage failures.
-    }
+    } catch (_error) {}
   }
 
   function toSymbol(symbol) {
     const normalized = String(symbol || "").toLowerCase();
-    return SYMBOLS.includes(normalized) ? normalized : null;
+    return SYMBOL_SET.has(normalized) ? normalized : null;
   }
 
   function machineIndex(machineKey) {
-    return Object.keys(machineViews).indexOf(machineKey);
+    return machineKeys.indexOf(machineKey);
   }
 
   function createRootMarkup(machineLabel) {
@@ -144,9 +150,31 @@
     `;
   }
 
+  function cacheViewElements(root) {
+    const reels = Array.from(root.querySelectorAll("[data-slot-reel]"));
+    return {
+      machine: root.querySelector("[data-slot-machine]"),
+      title: root.querySelector("[data-slot-title]"),
+      balance: root.querySelector("[data-slot-balance]"),
+      dragHandle: root.querySelector("[data-slot-drag-handle]"),
+      resizeHandle: root.querySelector("[data-slot-resize-handle]"),
+      closeButton: root.querySelector("[data-slot-close]"),
+      statsButton: root.querySelector("[data-slot-stats]"),
+      amount: root.querySelector("[data-slot-amount]"),
+      status: root.querySelector("[data-slot-status]"),
+      particles: root.querySelector("[data-slot-particles]"),
+      baseNode: root.querySelector("[data-slot-base]"),
+      bonusNode: root.querySelector("[data-slot-bonus]"),
+      totalNode: root.querySelector("[data-slot-total]"),
+      reels,
+      tracks: reels.map((reel) => reel.querySelector("[data-slot-track]")),
+    };
+  }
+
   function ensureView(machine) {
     const key = String(machine && machine.key ? machine.key : "main");
     const label = String(machine && machine.label ? machine.label : "Slot Machine");
+
     let view = machineViews[key];
     if (view && view.root && document.body.contains(view.root)) {
       updateMachineTitle(view, label);
@@ -164,6 +192,7 @@
       key,
       label,
       root,
+      els: cacheViewElements(root),
       currentLayout: null,
       lastAnimatedEventId: null,
       hasHydratedResult: false,
@@ -176,8 +205,8 @@
       pendingBreakdownEventId: null,
       hasHydratedLayout: false,
     };
-    machineViews[key] = view;
 
+    machineViews[key] = view;
     bindWindowControls(view);
     bindGlobalWindowEvents();
     return view;
@@ -203,39 +232,48 @@
     document.body.appendChild(controlPanel);
 
     controlPanelCollapsed = readControlPanelCollapsed();
-    const collapseButton = controlPanel.querySelector("[data-slot-panel-collapse]");
-    const addButton = controlPanel.querySelector("[data-slot-panel-add]");
-    const closeAllButton = controlPanel.querySelector("[data-slot-panel-close-all]");
-    const confirmButton = controlPanel.querySelector("[data-slot-panel-confirm]");
-    const cancelButton = controlPanel.querySelector("[data-slot-panel-cancel]");
-    const expandButton = controlPanel.querySelector("[data-slot-panel-expand]");
 
-    collapseButton.addEventListener("click", () => {
+    controlPanelRefs = {
+      panel: controlPanel,
+      panelInner: controlPanel.querySelector(".anki-slot-machine-control-panel-inner"),
+      collapseButton: controlPanel.querySelector("[data-slot-panel-collapse]"),
+      addButton: controlPanel.querySelector("[data-slot-panel-add]"),
+      closeAllButton: controlPanel.querySelector("[data-slot-panel-close-all]"),
+      confirmButton: controlPanel.querySelector("[data-slot-panel-confirm]"),
+      cancelButton: controlPanel.querySelector("[data-slot-panel-cancel]"),
+      expandButton: controlPanel.querySelector("[data-slot-panel-expand]"),
+    };
+
+    controlPanelRefs.collapseButton.addEventListener("click", () => {
       closeAllConfirmOpen = false;
       controlPanelCollapsed = true;
       writeControlPanelCollapsed(true);
       updateControlPanelState(lastSyncedMachineCount);
     });
 
-    addButton.addEventListener("click", () => {
+    controlPanelRefs.addButton.addEventListener("click", () => {
       closeAllConfirmOpen = false;
       updateControlPanelState(lastSyncedMachineCount);
       send("addSlot");
     });
-    closeAllButton.addEventListener("click", () => {
+
+    controlPanelRefs.closeAllButton.addEventListener("click", () => {
       closeAllConfirmOpen = true;
       updateControlPanelState(lastSyncedMachineCount);
     });
-    confirmButton.addEventListener("click", () => {
+
+    controlPanelRefs.confirmButton.addEventListener("click", () => {
       closeAllConfirmOpen = false;
       updateControlPanelState(lastSyncedMachineCount);
       send("closeAllSlots");
     });
-    cancelButton.addEventListener("click", () => {
+
+    controlPanelRefs.cancelButton.addEventListener("click", () => {
       closeAllConfirmOpen = false;
       updateControlPanelState(lastSyncedMachineCount);
     });
-    expandButton.addEventListener("click", () => {
+
+    controlPanelRefs.expandButton.addEventListener("click", () => {
       controlPanelCollapsed = false;
       writeControlPanelCollapsed(false);
       updateControlPanelState(lastSyncedMachineCount);
@@ -245,43 +283,33 @@
   }
 
   function updateControlPanelState(machineCount) {
-    const panel = ensureControlPanel();
-    const panelInner = panel.querySelector(".anki-slot-machine-control-panel-inner");
-    const collapseButton = panel.querySelector("[data-slot-panel-collapse]");
-    const closeAllButton = panel.querySelector("[data-slot-panel-close-all]");
-    const confirmButton = panel.querySelector("[data-slot-panel-confirm]");
-    const cancelButton = panel.querySelector("[data-slot-panel-cancel]");
-    const expandButton = panel.querySelector("[data-slot-panel-expand]");
+    ensureControlPanel();
+    const refs = controlPanelRefs;
     const canCloseAll = Number(machineCount || 0) > 0;
 
     if (controlPanelCollapsed) {
       closeAllConfirmOpen = false;
     }
-    closeAllButton.disabled = !canCloseAll;
     if (!canCloseAll) {
       closeAllConfirmOpen = false;
     }
-    panel.classList.toggle("is-collapsed", controlPanelCollapsed);
-    if (panelInner) {
-      panelInner.hidden = controlPanelCollapsed;
-    }
-    if (expandButton) {
-      expandButton.hidden = !controlPanelCollapsed;
-    }
-    if (collapseButton) {
-      collapseButton.hidden = controlPanelCollapsed;
-    }
-    confirmButton.hidden = !closeAllConfirmOpen;
-    cancelButton.hidden = !closeAllConfirmOpen;
-    closeAllButton.hidden = closeAllConfirmOpen;
-    closeAllButton.title = canCloseAll ? "Close every slot window" : "No slots are open";
+
+    refs.closeAllButton.disabled = !canCloseAll;
+    refs.closeAllButton.hidden = closeAllConfirmOpen;
+    refs.closeAllButton.title = canCloseAll ? "Close every slot window" : "No slots are open";
+
+    refs.panel.classList.toggle("is-collapsed", controlPanelCollapsed);
+    if (refs.panelInner) refs.panelInner.hidden = controlPanelCollapsed;
+    if (refs.expandButton) refs.expandButton.hidden = !controlPanelCollapsed;
+    if (refs.collapseButton) refs.collapseButton.hidden = controlPanelCollapsed;
+    refs.confirmButton.hidden = !closeAllConfirmOpen;
+    refs.cancelButton.hidden = !closeAllConfirmOpen;
   }
 
   function updateMachineTitle(view, label) {
     view.label = String(label || "Slot Machine");
-    const titleNode = view.root.querySelector("[data-slot-title]");
-    if (titleNode) {
-      titleNode.textContent = view.label;
+    if (view.els.title) {
+      view.els.title.textContent = view.label;
     }
   }
 
@@ -292,9 +320,7 @@
   function readStoredLayout(machineKey) {
     try {
       const raw = window.localStorage.getItem(layoutStorageKey(machineKey));
-      if (!raw) {
-        return null;
-      }
+      if (!raw) return null;
       const parsed = JSON.parse(raw);
       return parsed && typeof parsed === "object" ? parsed : null;
     } catch (_error) {
@@ -305,9 +331,7 @@
   function saveLayout(machineKey, layout) {
     try {
       window.localStorage.setItem(layoutStorageKey(machineKey), JSON.stringify(layout));
-    } catch (_error) {
-      // Ignore storage failures and keep the current in-memory layout.
-    }
+    } catch (_error) {}
   }
 
   function persistLayout(machineKey, layout) {
@@ -377,34 +401,42 @@
 
   function applyLayout(view, layout, options) {
     const index = machineIndex(view.key);
-    view.currentLayout = normalizedLayout(layout || view.currentLayout || defaultLayout(index), index);
-    const machine = view.root.querySelector("[data-slot-machine]");
-    const vars = layoutVariables(view.currentLayout);
-    view.root.style.left = `${view.currentLayout.left}px`;
-    view.root.style.top = `${view.currentLayout.top}px`;
-    view.root.style.right = "auto";
-    view.root.style.bottom = "auto";
-    view.root.style.width = `${view.currentLayout.width}px`;
-    view.root.style.height = `${view.currentLayout.height}px`;
+    const nextLayout = normalizedLayout(layout || view.currentLayout || defaultLayout(index), index);
+    view.currentLayout = nextLayout;
 
-    view.root.style.setProperty("--slot-window-scale", `${vars.scale}`);
-    view.root.style.setProperty("--slot-scale", "1");
-    view.root.style.setProperty("--slot-machine-symbol-size", `${vars.symbolSize}px`);
-    view.root.style.setProperty("--slot-machine-reel-height", `${vars.reelHeight}px`);
-    view.root.style.setProperty("--slot-machine-window-width", `${vars.windowWidth}px`);
-    view.root.style.setProperty("--slot-machine-breakdown-width", `${vars.breakdownWidth}px`);
-    view.root.style.setProperty("--slot-machine-amount-top", `${vars.amountTop}px`);
-    view.root.style.setProperty("--slot-machine-particles-top", `${vars.particlesTop}px`);
-    view.root.style.setProperty("--slot-machine-reel-gap", `${vars.reelGap}px`);
-    machine.hidden = false;
+    const vars = layoutVariables(nextLayout);
+    const style = view.root.style;
+
+    style.left = `${nextLayout.left}px`;
+    style.top = `${nextLayout.top}px`;
+    style.right = "auto";
+    style.bottom = "auto";
+    style.width = `${nextLayout.width}px`;
+    style.height = `${nextLayout.height}px`;
+
+    style.setProperty("--slot-window-scale", `${vars.scale}`);
+    style.setProperty("--slot-scale", "1");
+    style.setProperty("--slot-machine-symbol-size", `${vars.symbolSize}px`);
+    style.setProperty("--slot-machine-reel-height", `${vars.reelHeight}px`);
+    style.setProperty("--slot-machine-window-width", `${vars.windowWidth}px`);
+    style.setProperty("--slot-machine-breakdown-width", `${vars.breakdownWidth}px`);
+    style.setProperty("--slot-machine-amount-top", `${vars.amountTop}px`);
+    style.setProperty("--slot-machine-particles-top", `${vars.particlesTop}px`);
+    style.setProperty("--slot-machine-reel-gap", `${vars.reelGap}px`);
+
+    view.els.machine.hidden = false;
 
     if (!options || options.persist !== false) {
-      persistLayout(view.key, view.currentLayout);
+      persistLayout(view.key, nextLayout);
     }
   }
 
   function updateLayout(view, patch, options) {
-    applyLayout(view, { ...(view.currentLayout || defaultLayout(machineIndex(view.key))), ...patch }, options);
+    applyLayout(
+      view,
+      { ...(view.currentLayout || defaultLayout(machineIndex(view.key))), ...patch },
+      options,
+    );
   }
 
   function bindGlobalWindowEvents() {
@@ -414,16 +446,15 @@
     windowEventsBound = true;
 
     window.addEventListener("pointermove", (event) => {
-      if (!interaction) {
-        return;
-      }
+      if (!interaction) return;
+
       event.preventDefault();
       const view = machineViews[interaction.machineKey];
-      if (!view) {
-        return;
-      }
+      if (!view) return;
+
       const dx = event.clientX - interaction.startX;
       const dy = event.clientY - interaction.startY;
+
       if (interaction.mode === "move") {
         applyLayout(
           view,
@@ -462,13 +493,14 @@
 
     window.addEventListener("pointerup", endInteraction);
     window.addEventListener("pointercancel", endInteraction);
+
     window.addEventListener("resize", () => {
-      Object.keys(machineViews).forEach((machineKey) => {
-        const view = machineViews[machineKey];
+      for (let i = 0; i < machineKeys.length; i += 1) {
+        const view = machineViews[machineKeys[i]];
         if (view) {
           applyLayout(view, view.currentLayout, { persist: false });
         }
-      });
+      }
     });
   }
 
@@ -477,11 +509,6 @@
       return;
     }
     view.root.dataset.controlsBound = "true";
-
-    const dragHandle = view.root.querySelector("[data-slot-drag-handle]");
-    const resizeHandle = view.root.querySelector("[data-slot-resize-handle]");
-    const closeButton = view.root.querySelector("[data-slot-close]");
-    const statsButton = view.root.querySelector("[data-slot-stats]");
 
     function beginInteraction(mode, event) {
       interaction = {
@@ -496,33 +523,29 @@
       );
     }
 
-    dragHandle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) {
-        return;
-      }
+    view.els.dragHandle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       beginInteraction("move", event);
     });
 
-    resizeHandle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) {
-        return;
-      }
+    view.els.resizeHandle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       beginInteraction("resize", event);
     });
 
-    closeButton.addEventListener("click", () => {
+    view.els.closeButton.addEventListener("click", () => {
       send("removeSlot", view.key);
     });
-    closeButton.addEventListener("pointerdown", (event) => {
+    view.els.closeButton.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
 
-    statsButton.addEventListener("click", () => {
+    view.els.statsButton.addEventListener("click", () => {
       send("showStats");
     });
-    statsButton.addEventListener("pointerdown", (event) => {
+    view.els.statsButton.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
   }
@@ -536,9 +559,14 @@
   }
 
   function normalizeStrip(rawStrip) {
-    const strip = Array.isArray(rawStrip)
-      ? rawStrip.map(toSymbol).filter((symbol) => Boolean(symbol))
-      : [];
+    if (!Array.isArray(rawStrip)) {
+      return SYMBOLS.slice();
+    }
+    const strip = [];
+    for (let i = 0; i < rawStrip.length; i += 1) {
+      const symbol = toSymbol(rawStrip[i]);
+      if (symbol) strip.push(symbol);
+    }
     return strip.length ? strip : SYMBOLS.slice();
   }
 
@@ -548,18 +576,21 @@
   }
 
   function normalizePositions(rawPositions, stripLength, fallbackPositions) {
+    const safeStripLength = Math.max(1, stripLength);
     const fallback = Array.isArray(fallbackPositions)
       ? fallbackPositions.slice(0, 3)
-      : defaultPositionsForStrip(new Array(Math.max(1, stripLength)));
+      : defaultPositionsForStrip(new Array(safeStripLength));
+
     const source =
       Array.isArray(rawPositions) && rawPositions.length === 3 ? rawPositions : fallback;
+
     return source.map((value, index) => {
       const fallbackValue = fallback[index] || 0;
       const numeric = Number.parseInt(String(value), 10);
       if (!Number.isFinite(numeric)) {
-        return fallbackValue % Math.max(1, stripLength);
+        return fallbackValue % safeStripLength;
       }
-      return ((numeric % Math.max(1, stripLength)) + Math.max(1, stripLength)) % Math.max(1, stripLength);
+      return ((numeric % safeStripLength) + safeStripLength) % safeStripLength;
     });
   }
 
@@ -580,52 +611,72 @@
   }
 
   function symbolAtPosition(strip, position) {
-    if (!strip.length) {
-      return null;
-    }
+    if (!strip.length) return null;
     const length = strip.length;
     return strip[((position % length) + length) % length];
-  }
-
-  function reelCellMarkup(symbol) {
-    const normalized = toSymbol(symbol);
-    if (!normalized) {
-      return `
-        <div class="anki-slot-machine-reel-cell">
-          <div class="anki-slot-machine-symbol is-blank"></div>
-        </div>
-      `;
-    }
-    return `
-      <div class="anki-slot-machine-reel-cell">
-        <div class="anki-slot-machine-symbol" data-symbol="${normalized}">
-          <span class="anki-slot-machine-symbol-sprite" data-slot-sprite></span>
-        </div>
-      </div>
-    `;
   }
 
   function setReelOffset(reel, offsetPx) {
     reel.style.setProperty("--slot-track-offset", `${Math.round(offsetPx)}px`);
   }
 
-  function renderReelTrack(reel, symbols, centeredIndex) {
-    const track = reel.querySelector("[data-slot-track]");
-    track.innerHTML = symbols.map((symbol) => reelCellMarkup(symbol)).join("");
-    setReelOffset(reel, -(centeredIndex * REEL_STEP));
+  function renderReelTrack(view, reelIndex, symbols, centeredIndex) {
+    const cacheKey = `${symbols.join(",")}|${centeredIndex}`;
+    const viewKey = view.key;
+
+    if (!trackRenderCache[viewKey]) {
+      trackRenderCache[viewKey] = [null, null, null];
+    }
+
+    if (trackRenderCache[viewKey][reelIndex] === cacheKey) {
+      setReelOffset(view.els.reels[reelIndex], -(centeredIndex * REEL_STEP));
+      return;
+    }
+
+    trackRenderCache[viewKey][reelIndex] = cacheKey;
+
+    const track = view.els.tracks[reelIndex];
+    while (track.firstChild) {
+      track.removeChild(track.firstChild);
+    }
+
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < symbols.length; i += 1) {
+      const normalized = toSymbol(symbols[i]);
+      const cell = document.createElement("div");
+      cell.className = "anki-slot-machine-reel-cell";
+
+      const symbolDiv = document.createElement("div");
+      if (!normalized) {
+        symbolDiv.className = "anki-slot-machine-symbol is-blank";
+      } else {
+        symbolDiv.className = "anki-slot-machine-symbol";
+        symbolDiv.setAttribute("data-symbol", normalized);
+
+        const sprite = document.createElement("span");
+        sprite.className = "anki-slot-machine-symbol-sprite";
+        sprite.setAttribute("data-slot-sprite", "");
+        symbolDiv.appendChild(sprite);
+      }
+
+      cell.appendChild(symbolDiv);
+      frag.appendChild(cell);
+    }
+
+    track.appendChild(frag);
+    setReelOffset(view.els.reels[reelIndex], -(centeredIndex * REEL_STEP));
   }
 
-  function renderReelAtPosition(view, reel, position) {
+  function renderReelAtPosition(view, reelIndex, position) {
     const strip = view.reelStrip.length ? view.reelStrip : SYMBOLS;
     const cells = [-1, 0, 1].map((offset) => symbolAtPosition(strip, position + offset));
-    renderReelTrack(reel, cells, 1);
+    renderReelTrack(view, reelIndex, cells, 1);
   }
 
   function renderReelPositions(view, positions) {
-    const reels = view.root.querySelectorAll("[data-slot-reel]");
-    reels.forEach((reel, index) => {
-      renderReelAtPosition(view, reel, positions[index] || 0);
-    });
+    for (let i = 0; i < 3; i += 1) {
+      renderReelAtPosition(view, i, positions[i] || 0);
+    }
   }
 
   function stopSpinAnimation(view) {
@@ -634,17 +685,18 @@
     }
     view.activeSpin = null;
     view.pendingBreakdownEventId = null;
-    view.root.querySelectorAll("[data-slot-reel]").forEach((reel) => {
-      reel.classList.remove("is-spinning");
-    });
+    for (let i = 0; i < view.els.reels.length; i += 1) {
+      view.els.reels[i].classList.remove("is-spinning");
+    }
   }
 
   function clearReels(view) {
     stopSpinAnimation(view);
-    view.root.querySelectorAll("[data-slot-reel]").forEach((reel) => {
+    for (let i = 0; i < view.els.reels.length; i += 1) {
+      const reel = view.els.reels[i];
       reel.classList.remove("is-bright");
       reel.classList.remove("is-pair");
-    });
+    }
     renderReelPositions(view, view.reelPositions);
   }
 
@@ -662,8 +714,14 @@
   }
 
   function deterministicUnit() {
-    const seed = Array.from(arguments).join(":");
-    return (stableHash(seed) % 1000) / 999;
+    let str = "";
+    for (let i = 0; i < arguments.length; ++i) {
+      if (i !== 0) {
+        str += ":";
+      }
+      str += String(arguments[i]);
+    }
+    return (stableHash(str) % 1000) / 999;
   }
 
   function slotSpinProgress(progress, settleAmount) {
@@ -680,36 +738,42 @@
   }
 
   function renderStaticResult(view, result, positions) {
-    const reels = view.root.querySelectorAll("[data-slot-reel]");
     stopSpinAnimation(view);
+    trackRenderCache[view.key] = [null, null, null];
+
     view.reelPositions = normalizePositions(
       positions,
       view.reelStrip.length,
       view.reelPositions,
     );
-    reels.forEach((reel) => {
-      reel.classList.remove("is-bright");
-      reel.classList.remove("is-pair");
-      reel.classList.remove("is-spinning");
-    });
+
+    const reels = view.els.reels;
+    for (let i = 0; i < reels.length; i += 1) {
+      reels[i].classList.remove("is-bright");
+      reels[i].classList.remove("is-pair");
+      reels[i].classList.remove("is-spinning");
+    }
+
     renderReelPositions(view, view.reelPositions);
 
     if (!result) {
       return;
     }
+
     const symbols = (result.reels || []).map(toSymbol);
     const pairSymbol = !result.line_hit ? toSymbol(result.matched_symbol) : null;
-    reels.forEach((reel, index) => {
+
+    for (let i = 0; i < reels.length; i += 1) {
       if (result.line_hit) {
-        reel.classList.add("is-bright");
-      } else if (pairSymbol && symbols[index] === pairSymbol) {
-        reel.classList.add("is-pair");
+        reels[i].classList.add("is-bright");
+      } else if (pairSymbol && symbols[i] === pairSymbol) {
+        reels[i].classList.add("is-pair");
       }
-    });
+    }
   }
 
   function revealSpinResult(view, result, positions, options) {
-    const reels = Array.from(view.root.querySelectorAll("[data-slot-reel]"));
+    const reels = view.els.reels;
     const highlight = Boolean(options && options.highlight);
     const pairHighlight = options && options.pairHighlight === false ? false : true;
     const onComplete = options && typeof options.onComplete === "function" ? options.onComplete : null;
@@ -730,16 +794,17 @@
     const stepCounts = normalizeStepCounts(result.reel_step_counts);
 
     stopSpinAnimation(view);
-    reels.forEach((reel) => {
-      reel.classList.remove("is-bright");
-      reel.classList.remove("is-pair");
-    });
+    trackRenderCache[view.key] = [null, null, null];
 
-    const spinState = {
-      frameId: null,
-    };
+    for (let i = 0; i < reels.length; i += 1) {
+      reels[i].classList.remove("is-bright");
+      reels[i].classList.remove("is-pair");
+    }
+
+    const spinState = { frameId: null };
     view.activeSpin = spinState;
     view.pendingBreakdownEventId = result.event_id || null;
+
     const finishFractions = [0.66, 0.84, 1];
     const delayFractions = [0, 0.04, 0.08];
 
@@ -750,15 +815,17 @@
       const baseDelta = ((targetPosition - startPosition) % stripLength + stripLength) % stripLength;
       const fallbackSteps = baseDelta === 0 ? stripLength : baseDelta;
       const steps = Math.max(fallbackSteps, stepCounts[index] || 0);
+
       const sequence = [];
       for (let offset = -1; offset <= steps + 1; offset += 1) {
         sequence.push(symbolAtPosition(view.reelStrip, startPosition + offset));
       }
-      renderReelTrack(reel, sequence, 1);
+
+      renderReelTrack(view, index, sequence, 1);
       reel.classList.add("is-spinning");
+
       return {
         reel,
-        index,
         steps,
         targetPosition,
         targetSymbol: symbols[index] || symbolAtPosition(view.reelStrip, targetPosition),
@@ -789,27 +856,30 @@
       window.performance && typeof window.performance.now === "function"
         ? window.performance.now()
         : Date.now();
+
     const tick = (now) => {
       if (view.activeSpin !== spinState) {
         return;
       }
 
       let hasActiveReel = false;
-      reelStates.forEach((state) => {
+
+      for (let i = 0; i < reelStates.length; i += 1) {
+        const state = reelStates[i];
         const elapsed = now - startTime - state.delay;
+
         if (elapsed <= 0) {
           hasActiveReel = true;
-          return;
+          continue;
         }
 
         const progress = Math.min(1, elapsed / state.duration);
-        const virtualIndex =
-          1 + state.steps * slotSpinProgress(progress, state.settleAmount);
+        const virtualIndex = 1 + state.steps * slotSpinProgress(progress, state.settleAmount);
         setReelOffset(state.reel, -(virtualIndex * REEL_STEP));
 
         if (progress < 1) {
           hasActiveReel = true;
-          return;
+          continue;
         }
 
         if (!state.settled) {
@@ -821,7 +891,7 @@
             state.reel.classList.add("is-pair");
           }
         }
-      });
+      }
 
       if (hasActiveReel) {
         spinState.frameId = requestFrame(tick);
@@ -832,6 +902,7 @@
       renderReelPositions(view, view.reelPositions);
       view.activeSpin = null;
       view.pendingBreakdownEventId = null;
+
       if (onComplete) {
         onComplete();
       }
@@ -841,48 +912,60 @@
   }
 
   function showAmount(view, text, tone) {
-    const amount = view.root.querySelector("[data-slot-amount]");
+    const amount = view.els.amount;
     const numericValue = Math.abs(Number.parseFloat(String(text).replace(/[^0-9.\-]/g, "")) || 0);
     const fontScale = Math.max(1, Math.min(3.2, 1 + Math.pow(numericValue / 8, 0.6) * 0.95));
+
     amount.textContent = text;
     amount.style.setProperty("--slot-amount-font-scale", String(fontScale));
     amount.className = `anki-slot-machine-amount is-visible is-${tone}`;
-    if (view.amountTimeout) {
-      window.clearTimeout(view.amountTimeout);
-    }
-    view.amountTimeout = window.setTimeout(() => {
-      amount.style.removeProperty("--slot-amount-font-scale");
-      amount.className = "anki-slot-machine-amount";
-      amount.textContent = "";
-    }, 900);
-  }
 
-  function clearAmount(view) {
-    const amount = view.root.querySelector("[data-slot-amount]");
     if (view.amountTimeout) {
       window.clearTimeout(view.amountTimeout);
       view.amountTimeout = null;
     }
-    amount.style.removeProperty("--slot-amount-font-scale");
-    amount.className = "anki-slot-machine-amount";
-    amount.textContent = "";
+
+    view.amountTimeout = window.setTimeout(() => {
+      amount.style.removeProperty("--slot-amount-font-scale");
+      amount.className = "anki-slot-machine-amount";
+      amount.textContent = "";
+      view.amountTimeout = null;
+    }, 900);
+  }
+
+  function clearAmount(view) {
+    if (view.amountTimeout) {
+      window.clearTimeout(view.amountTimeout);
+      view.amountTimeout = null;
+    }
+    view.els.amount.style.removeProperty("--slot-amount-font-scale");
+    view.els.amount.className = "anki-slot-machine-amount";
+    view.els.amount.textContent = "";
   }
 
   function clearStatus(view) {
-    const status = view.root.querySelector("[data-slot-status]");
-    status.className = "anki-slot-machine-status";
-    status.textContent = "";
+    view.els.status.className = "anki-slot-machine-status";
+    view.els.status.textContent = "";
   }
 
   function showStatus(view, text, tone) {
-    const status = view.root.querySelector("[data-slot-status]");
-    status.className = `anki-slot-machine-status is-visible is-${tone}`;
-    status.textContent = text;
+    view.els.status.className = `anki-slot-machine-status is-visible is-${tone}`;
+    view.els.status.textContent = text;
   }
 
   function burstParticles(view, tone) {
-    const container = view.root.querySelector("[data-slot-particles]");
-    container.innerHTML = "";
+    const container = view.els.particles;
+
+    if (particleCleanupTimers[view.key]) {
+      window.clearTimeout(particleCleanupTimers[view.key]);
+      particleCleanupTimers[view.key] = null;
+    }
+
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
+    const frag = document.createDocumentFragment();
     for (let index = 0; index < 8; index += 1) {
       const particle = document.createElement("div");
       particle.className = `anki-slot-machine-particle is-${tone}`;
@@ -890,17 +973,20 @@
       particle.style.setProperty("--dx", `${-12 + Math.random() * 24}px`);
       particle.style.setProperty("--dy", `${-18 - Math.random() * 18}px`);
       particle.style.animationDelay = `${index * 18}ms`;
-      container.appendChild(particle);
-      window.setTimeout(() => {
-        if (particle.parentNode && typeof particle.parentNode.removeChild === "function") {
-          particle.parentNode.removeChild(particle);
-        }
-      }, 520);
+      frag.appendChild(particle);
     }
+    container.appendChild(frag);
+
+    particleCleanupTimers[view.key] = window.setTimeout(() => {
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      particleCleanupTimers[view.key] = null;
+    }, 540);
   }
 
   function flashLoss(view) {
-    const machine = view.root.querySelector("[data-slot-machine]");
+    const machine = view.els.machine;
     machine.classList.remove("is-loss");
     void machine.offsetWidth;
     machine.classList.add("is-loss");
@@ -908,14 +994,13 @@
   }
 
   function renderBreakdown(view, result, options) {
-    const baseNode = view.root.querySelector("[data-slot-base]");
-    const bonusNode = view.root.querySelector("[data-slot-bonus]");
-    const totalNode = view.root.querySelector("[data-slot-total]");
+    const baseNode = view.els.baseNode;
+    const bonusNode = view.els.bonusNode;
+    const totalNode = view.els.totalNode;
     const isPending = Boolean(options && options.pending);
     const payoutValue = result && result.payout != null ? result.payout : 0;
     const baseRewardValue = result && result.base_reward != null ? result.base_reward : 0;
     const slotMultiplierValue = result && result.slot_multiplier != null ? result.slot_multiplier : 0;
-    const betValue = result && result.bet != null ? result.bet : defaultMoney;
     const isZeroPayout = Number.parseFloat(String(payoutValue)) === 0;
 
     baseNode.className = "anki-slot-machine-breakdown-line";
@@ -933,8 +1018,6 @@
     if (isPending) {
       if (result.answer_key === "again") {
         baseNode.textContent = `-$${baseRewardValue || defaultMoney}`;
-      } else if (result.answer_key === "hard") {
-        baseNode.textContent = `+$${baseRewardValue}`;
       } else {
         baseNode.textContent = `+$${baseRewardValue}`;
       }
@@ -1005,15 +1088,16 @@
   }
 
   function maybeAnimate(view, result) {
-    if (!result || !result.event_id) {
-      return;
-    }
+    if (!result || !result.event_id) return;
+
     const payoutValue = result.payout != null ? result.payout : 0;
     const betValue = result.bet != null ? result.bet : 0;
     const isPositivePayout = Number.parseFloat(String(payoutValue)) > 0;
+
     if (result.event_id === view.lastAnimatedEventId) {
       return;
     }
+
     view.lastAnimatedEventId = result.event_id;
     clearAmount(view);
     clearStatus(view);
@@ -1060,6 +1144,7 @@
     }
 
     renderStaticResult(view, result, view.syncedReelPositions);
+
     if (!result.did_spin) {
       showStatus(view, "No spin", "neutral");
       return;
@@ -1110,51 +1195,84 @@
     return null;
   }
 
+  function removeView(machineKey) {
+    const view = machineViews[machineKey];
+    if (!view) return;
+
+    stopSpinAnimation(view);
+    clearAmount(view);
+    clearStatus(view);
+
+    if (particleCleanupTimers[machineKey]) {
+      window.clearTimeout(particleCleanupTimers[machineKey]);
+      particleCleanupTimers[machineKey] = null;
+    }
+
+    if (view.els && view.els.particles) {
+      while (view.els.particles.firstChild) {
+        view.els.particles.removeChild(view.els.particles.firstChild);
+      }
+    }
+
+    trackRenderCache[machineKey] = null;
+
+    if (view.root && view.root.parentNode && typeof view.root.parentNode.removeChild === "function") {
+      view.root.parentNode.removeChild(view.root);
+    }
+
+    delete machineViews[machineKey];
+  }
+
   function syncState(nextState) {
     const state = nextState || {};
     const suppressAnimation = Boolean(state.suppress_animation);
+
     ensureControlPanel();
-    let machines = [];
-    if (Array.isArray(state.machines)) {
-      machines = state.machines;
-    } else {
-      machines = [{ key: "main", label: "Slot Machine" }];
-    }
+
+    const machines = Array.isArray(state.machines)
+      ? state.machines
+      : [{ key: "main", label: "Slot Machine" }];
+
+    machineKeys = machines.map((machine) => String(machine.key || "main"));
     lastSyncedMachineCount = machines.length;
-    const activeMachineKeys = new Set(machines.map((machine) => String(machine.key || "main")));
+
+    const activeMachineKeys = new Set(machineKeys);
     const persistedLayouts =
       state.window_layouts && typeof state.window_layouts === "object" ? state.window_layouts : {};
 
-    Object.keys(machineViews).forEach((machineKey) => {
-      if (activeMachineKeys.has(machineKey)) {
-        return;
+    const existingKeys = Object.keys(machineViews);
+    for (let i = 0; i < existingKeys.length; i += 1) {
+      const machineKey = existingKeys[i];
+      if (!activeMachineKeys.has(machineKey)) {
+        removeView(machineKey);
       }
-      const view = machineViews[machineKey];
-      if (view) {
-        stopSpinAnimation(view);
-      }
-      if (view && view.root && view.root.parentNode && typeof view.root.parentNode.removeChild === "function") {
-        view.root.parentNode.removeChild(view.root);
-      }
-      delete machineViews[machineKey];
-    });
+    }
 
-    machines.forEach((machine, index) => {
+    for (let index = 0; index < machines.length; index += 1) {
+      const machine = machines[index];
+      const key = String(machine.key || "main");
       const view = ensureView(machine);
+
       updateMachineTitle(view, machine.label);
+
       if (!view.hasHydratedLayout) {
         const savedLayout =
-          persistedLayouts[machine.key] ||
-          (machine.key === "main" ? state.window_layout : null) ||
-          readStoredLayout(machine.key) ||
+          persistedLayouts[key] ||
+          (key === "main" ? state.window_layout : null) ||
+          readStoredLayout(key) ||
           defaultLayout(index);
+
         applyLayout(view, savedLayout, { persist: false });
         view.hasHydratedLayout = true;
-      } else if (!hasHydratedLayouts && persistedLayouts[machine.key]) {
-        applyLayout(view, persistedLayouts[machine.key], { persist: false });
+      } else if (!hasHydratedLayouts && persistedLayouts[key]) {
+        applyLayout(view, persistedLayouts[key], { persist: false });
       }
 
-      view.root.querySelector("[data-slot-balance]").textContent = `$${state.balance || 0}`;
+      const balanceText = `$${state.balance || 0}`;
+      if (view.els.balance.textContent !== balanceText) {
+        view.els.balance.textContent = balanceText;
+      }
+
       view.reelStrip = normalizeStrip(machine.reel_strip);
       view.syncedReelPositions = normalizePositions(
         machine.reel_positions,
@@ -1162,47 +1280,59 @@
         view.reelPositions,
       );
       view.spinDurationMs = clampSpinDuration(state.spin_animation_duration_ms);
-      const machineResult = machineResultFor(state.last_result, machine.key);
+
+      const machineResult = machineResultFor(state.last_result, key);
+
       if (!view.hasHydratedResult) {
         if (machineResult && machineResult.event_id) {
           view.lastAnimatedEventId = machineResult.event_id;
         }
         renderBreakdown(view, machineResult);
         clearAmount(view);
+
         if (machineResult && !machineResult.did_spin) {
           showStatus(view, "No spin", "neutral");
         } else {
           clearStatus(view);
         }
+
         renderStaticResult(view, machineResult, view.syncedReelPositions);
         view.hasHydratedResult = true;
-        return;
+        continue;
       }
+
       if (suppressAnimation) {
         if (machineResult && machineResult.event_id) {
           view.lastAnimatedEventId = machineResult.event_id;
         }
+
         renderBreakdown(view, machineResult);
         clearAmount(view);
+
         if (machineResult && !machineResult.did_spin) {
           showStatus(view, "No spin", "neutral");
         } else {
           clearStatus(view);
         }
+
         renderStaticResult(view, machineResult, view.syncedReelPositions);
-        return;
+        continue;
       }
+
       const shouldDelayBreakdown =
         Boolean(machineResult && machineResult.did_spin && machineResult.animation_enabled) &&
         (machineResult.event_id !== view.lastAnimatedEventId ||
           machineResult.event_id === view.pendingBreakdownEventId);
+
       const isSameEventAnimationInProgress = Boolean(
         machineResult &&
           view.activeSpin &&
           view.pendingBreakdownEventId &&
           machineResult.event_id === view.pendingBreakdownEventId,
       );
+
       renderBreakdown(view, machineResult, { pending: shouldDelayBreakdown });
+
       if (shouldDelayBreakdown) {
         clearStatus(view);
       } else if (machineResult && !machineResult.did_spin) {
@@ -1210,26 +1340,23 @@
       } else {
         clearStatus(view);
       }
+
       if (
         machineResult &&
         machineResult.event_id &&
         machineResult.event_id !== view.lastAnimatedEventId
       ) {
         maybeAnimate(view, machineResult);
-      } else if (isSameEventAnimationInProgress) {
-        return;
-      } else {
+      } else if (!isSameEventAnimationInProgress) {
         renderStaticResult(view, machineResult, view.syncedReelPositions);
       }
-    });
+    }
 
     updateControlPanelState(machines.length);
     hasHydratedLayouts = true;
   }
 
-  window.AnkiSlotMachineInstances[INSTANCE_KEY] = {
-    syncState,
-  };
+  window.AnkiSlotMachineInstances[INSTANCE_KEY] = { syncState };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => send("refresh"));
