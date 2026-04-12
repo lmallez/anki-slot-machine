@@ -36,6 +36,7 @@ class _BaseWidget:
         self._text = ""
         self._plain_text_updates = 0
         self._minimum_height = None
+        self._minimum_width = None
         self._mouse_tracking = False
         self._stylesheet = ""
         self._visible = True
@@ -48,6 +49,9 @@ class _BaseWidget:
 
     def setMinimumHeight(self, value: int) -> None:
         self._minimum_height = value
+
+    def setMinimumWidth(self, value: int) -> None:
+        self._minimum_width = value
 
     def setStyleSheet(self, stylesheet: str) -> None:
         self._stylesheet = stylesheet
@@ -73,6 +77,9 @@ class _BaseWidget:
 
     def setVisible(self, value: bool) -> None:
         self._visible = value
+
+    def setContentsMargins(self, *_args, **_kwargs) -> None:
+        return None
 
 
 class _QLabel(_BaseWidget):
@@ -139,6 +146,66 @@ class _QPushButton(_BaseWidget):
         self.clicked = _Signal()
 
 
+class _SpinBox(_BaseWidget):
+    def __init__(self, *_args, **_kwargs) -> None:
+        super().__init__()
+        self._minimum = 0
+        self._maximum = 99
+        self._value = 0
+        self._single_step = 1
+
+    def setRange(self, minimum: int, maximum: int) -> None:
+        self._minimum = minimum
+        self._maximum = maximum
+
+    def setMinimum(self, minimum: int) -> None:
+        self._minimum = minimum
+
+    def setMaximum(self, maximum: int) -> None:
+        self._maximum = maximum
+
+    def setSingleStep(self, value: int) -> None:
+        self._single_step = value
+
+    def setValue(self, value: int) -> None:
+        self._value = max(self._minimum, min(self._maximum, int(value)))
+
+    def value(self) -> int:
+        return self._value
+
+
+class _DoubleSpinBox(_SpinBox):
+    def __init__(self, *_args, **_kwargs) -> None:
+        super().__init__()
+        self._decimals = 2
+        self._minimum = 0.0
+        self._maximum = 99.0
+        self._value = 0.0
+        self._single_step = 1.0
+
+    def setDecimals(self, value: int) -> None:
+        self._decimals = value
+
+    def setRange(self, minimum: float, maximum: float) -> None:
+        self._minimum = minimum
+        self._maximum = maximum
+
+    def setMinimum(self, minimum: float) -> None:
+        self._minimum = minimum
+
+    def setMaximum(self, maximum: float) -> None:
+        self._maximum = maximum
+
+    def setSingleStep(self, value: float) -> None:
+        self._single_step = value
+
+    def setValue(self, value: float) -> None:
+        self._value = max(self._minimum, min(self._maximum, float(value)))
+
+    def value(self) -> float:
+        return self._value
+
+
 class _Layout:
     def __init__(self, *_args, **_kwargs) -> None:
         self.children = []
@@ -149,6 +216,9 @@ class _Layout:
 
     def addLayout(self, layout, *_args) -> None:
         self.children.append(layout)
+
+    def addRow(self, *items) -> None:
+        self.children.append(items)
 
     def addStretch(self, stretch) -> None:
         self.children.append(stretch)
@@ -271,12 +341,15 @@ def install_stubs() -> SimpleNamespace:
     qt_module.QAction = _QAction
     qt_module.QMenu = _QMenu
     qt_module.QDialog = _QDialog
+    qt_module.QDoubleSpinBox = _DoubleSpinBox
     qt_module.QFrame = _QFrame
+    qt_module.QFormLayout = _Layout
     qt_module.QGridLayout = _Layout
     qt_module.QHBoxLayout = _Layout
     qt_module.QLabel = _QLabel
     qt_module.QPlainTextEdit = _QPlainTextEdit
     qt_module.QPushButton = _QPushButton
+    qt_module.QSpinBox = _SpinBox
     qt_module.QTimer = _QTimer
     qt_module.QVBoxLayout = _Layout
     qt_module.QWidget = _QWidget

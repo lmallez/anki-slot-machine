@@ -21,6 +21,7 @@ from .runtime import (
     write_window_layout,
 )
 from .service import get_service
+from .ui.settings_dialog import show_settings_dialog
 from .ui.stats_dialog import show_stats_dialog
 
 _registered = False
@@ -113,6 +114,9 @@ def on_webview_did_receive_js_message(handled_result, message: str, context):
         )
     elif action == "showStats":
         show_stats_dialog()
+        return True, None
+    elif action == "showSettings":
+        show_settings_dialog()
         return True, None
     elif action == "saveLayout" and value is not None:
         try:

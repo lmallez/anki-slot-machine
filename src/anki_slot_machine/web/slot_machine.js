@@ -226,6 +226,7 @@
         <button class="anki-slot-machine-control-button is-close-all" data-slot-panel-close-all type="button">Close All</button>
         <button class="anki-slot-machine-control-button is-confirm" data-slot-panel-confirm type="button" hidden>Confirm</button>
         <button class="anki-slot-machine-control-button is-cancel" data-slot-panel-cancel type="button" hidden>Cancel</button>
+        <button class="anki-slot-machine-control-button is-settings" data-slot-panel-settings type="button">Settings</button>
       </div>
       <button class="anki-slot-machine-control-pill" data-slot-panel-expand type="button" hidden>Slots</button>
     `;
@@ -241,6 +242,7 @@
       closeAllButton: controlPanel.querySelector("[data-slot-panel-close-all]"),
       confirmButton: controlPanel.querySelector("[data-slot-panel-confirm]"),
       cancelButton: controlPanel.querySelector("[data-slot-panel-cancel]"),
+      settingsButton: controlPanel.querySelector("[data-slot-panel-settings]"),
       expandButton: controlPanel.querySelector("[data-slot-panel-expand]"),
     };
 
@@ -255,6 +257,12 @@
       closeAllConfirmOpen = false;
       updateControlPanelState(lastSyncedMachineCount);
       send("addSlot");
+    });
+
+    controlPanelRefs.settingsButton.addEventListener("click", () => {
+      closeAllConfirmOpen = false;
+      updateControlPanelState(lastSyncedMachineCount);
+      send("showSettings");
     });
 
     controlPanelRefs.closeAllButton.addEventListener("click", () => {

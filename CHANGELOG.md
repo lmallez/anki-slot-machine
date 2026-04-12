@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.9] - 2026-04-12
+
+### Added
+
+- Added a quick settings dialog for answer rewards and spin-trigger controls, so
+  those values no longer require manual JSON editing.
+- Added a `Settings` button to the floating `Slots` control panel and a `Quick
+  Settings` entry in the Anki tools menu.
+
 ## [v0.0.8] - 2026-04-10
 
 ### Added

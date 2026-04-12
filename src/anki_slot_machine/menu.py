@@ -7,6 +7,7 @@ from aqt.utils import askUser, showText
 from .reviewer import refresh_active_reviewer
 from .service import get_service
 from .ui.odds_dialog import show_odds_dialog
+from .ui.settings_dialog import show_settings_dialog
 from .ui.stats_dialog import show_stats_dialog
 
 _registered = False
@@ -31,6 +32,10 @@ def register() -> None:
     reset_action = QAction("Reset Balance and Stats", mw)
     reset_action.triggered.connect(_reset_progress)
     menu.addAction(reset_action)
+
+    quick_settings_action = QAction("Quick Settings", mw)
+    quick_settings_action.triggered.connect(show_settings_dialog)
+    menu.addAction(quick_settings_action)
 
     settings_action = QAction("Settings Help", mw)
     settings_action.triggered.connect(_show_settings_help)

@@ -152,6 +152,7 @@ class FakeElement {
       const panelInner = new FakeElement("div");
       const collapseButton = new FakeElement("button");
       const addButton = new FakeElement("button");
+      const settingsButton = new FakeElement("button");
       const closeAllButton = new FakeElement("button");
       const confirmButton = new FakeElement("button");
       const cancelButton = new FakeElement("button");
@@ -160,6 +161,7 @@ class FakeElement {
       this._selectorMap.set(".anki-slot-machine-control-panel-inner", panelInner);
       this._selectorMap.set("[data-slot-panel-collapse]", collapseButton);
       this._selectorMap.set("[data-slot-panel-add]", addButton);
+      this._selectorMap.set("[data-slot-panel-settings]", settingsButton);
       this._selectorMap.set("[data-slot-panel-close-all]", closeAllButton);
       this._selectorMap.set("[data-slot-panel-confirm]", confirmButton);
       this._selectorMap.set("[data-slot-panel-cancel]", cancelButton);

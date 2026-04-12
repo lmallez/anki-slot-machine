@@ -153,6 +153,17 @@ class ReviewerHookTests(unittest.TestCase):
         self.assertEqual((handled, result), (True, None))
         show_stats_dialog.assert_called_once_with()
 
+    def test_show_settings_message_opens_settings_dialog(self) -> None:
+        context = self.make_reviewer()
+
+        with patch.object(reviewer, "show_settings_dialog") as show_settings_dialog:
+            handled, result = reviewer.on_webview_did_receive_js_message(
+                (False, None), self.command("showSettings"), context
+            )
+
+        self.assertEqual((handled, result), (True, None))
+        show_settings_dialog.assert_called_once_with()
+
     def test_add_slot_message_updates_config_and_pushes_snapshot(self) -> None:
         context = self.make_reviewer()
         fake_service = SimpleNamespace(snapshot=Mock(return_value={"balance": "150.00"}))
