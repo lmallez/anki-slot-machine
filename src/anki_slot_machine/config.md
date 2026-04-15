@@ -101,11 +101,11 @@ but the configured face counts and resulting probabilities stay the same.
 - Reviews before the threshold do not change the balance yet; they only build
   the shared stack.
 - When the shared review counter reaches `spin_trigger_every_n`, the backend
-  settles the full stacked value.
+  starts checking whether the full stacked value should spin.
 - If `spin_trigger_chance` passes on that settlement, the spin payout becomes
   `stacked_value x multiplier`.
-- If the chance check fails, the stacked value is paid directly without a slot
-  multiplier.
+- If the chance check fails, the stack stays pending and keeps building until a
+  later review produces an actual spin.
 - Any answer with a configured value of `0` still counts toward the threshold,
   but contributes `0` to the stack.
 - Negative outcomes are clamped so the shared balance never goes below zero.
@@ -125,10 +125,10 @@ Trigger logic:
 
 - Every review increments one shared review counter.
 - Each review also adds its signed configured value into one shared stack.
-- When the counter reaches `spin_trigger_every_n`, the backend rolls
-  `spin_trigger_chance` against that full stacked amount.
-- The counter and stack reset after each settlement, whether the slot actually
-  spins or the stack is paid directly.
+- Once the counter reaches `spin_trigger_every_n`, the backend keeps rolling
+  `spin_trigger_chance` against the current stacked amount until a real spin
+  happens.
+- The counter and stack reset only when an actual spin occurs.
 
 ## How probabilities work
 

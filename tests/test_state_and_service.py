@@ -382,13 +382,13 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(second.did_spin)
         self.assertEqual(first.payout, Decimal("0.00"))
         self.assertEqual(first.stack_value, Decimal("1.00"))
-        self.assertEqual(second.payout, Decimal("2.00"))
+        self.assertEqual(second.payout, Decimal("0.00"))
         self.assertEqual(second.stack_value, Decimal("2.00"))
         self.assertFalse(third.did_spin)
         self.assertEqual(third.payout, Decimal("0.00"))
-        self.assertEqual(third.stack_value, Decimal("1.00"))
-        self.assertEqual(service.state().eligible_reviews_since_spin_check, 1)
-        self.assertEqual(service.state().pending_stack_value, Decimal("1.00"))
+        self.assertEqual(third.stack_value, Decimal("3.00"))
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 3)
+        self.assertEqual(service.state().pending_stack_value, Decimal("3.00"))
 
     def test_pre_threshold_reviews_still_create_history_and_undo_entries(self) -> None:
         config = make_config(spin_trigger_every_n=3)
@@ -437,9 +437,9 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["total_won"], "0.00")
         self.assertEqual(snapshot["spins"], 0)
         self.assertEqual(snapshot["best_streak"], 0)
-        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 1)
 
-    def test_hard_no_op_does_not_create_slot_undo_or_history_entry(self) -> None:
+    def test_hard_zero_value_still_creates_trigger_progress_undo_entry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(
                 make_config(answer_base_values={"hard": 0}),
@@ -447,14 +447,14 @@ class ServiceTests(unittest.TestCase):
             )
             service.apply_review(card_id=99, ease=2, button_count=4)
 
-            self.assertFalse(service.snapshot()["can_undo"])
-            self.assertEqual(service.state().history, [])
-            self.assertEqual(service.state().undo_history, [])
+            self.assertTrue(service.snapshot()["can_undo"])
+            self.assertEqual(len(service.state().history), 1)
+            self.assertEqual(len(service.state().undo_history), 1)
             self.assertEqual(service.state().daily_earnings, {})
-            self.assertEqual(service.state().review_undo_stack, [False])
-            self.assertFalse(service.undo_last_review())
+            self.assertEqual(service.state().review_undo_stack, [True])
+            self.assertTrue(service.undo_last_review())
 
-        self.assertEqual(service.state().review_undo_stack, [])
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
 
     def test_hard_uses_default_positive_value_with_spinning(self) -> None:
         config = make_config()
@@ -511,7 +511,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(second.payout, Decimal("0.00"))
         self.assertEqual(first.stack_value, Decimal("0.00"))
         self.assertEqual(second.stack_value, Decimal("0.00"))
-        self.assertEqual(service.state().eligible_reviews_since_spin_check, 0)
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 2)
         self.assertEqual(service.state().pending_stack_value, Decimal("0.00"))
 
     def test_zero_again_value_does_not_spin(self) -> None:
@@ -532,7 +532,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["balance"], "100.00")
         self.assertEqual(service.state().pending_stack_value, Decimal("0.00"))
 
-    def test_threshold_cashout_clamps_negative_stack_to_available_balance(self) -> None:
+    def test_failed_threshold_check_keeps_negative_stack_waiting(self) -> None:
         config = make_config(
             starting_balance=0.75,
             answer_base_values={"good": -1},
@@ -549,11 +549,12 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(first.payout, Decimal("0.00"))
         self.assertEqual(first.stack_value, Decimal("-1.00"))
         self.assertFalse(result.did_spin)
-        self.assertEqual(result.payout, Decimal("-0.75"))
-        self.assertEqual(result.net_change, Decimal("-0.75"))
-        self.assertEqual(result.balance_after, Decimal("0.00"))
-        self.assertEqual(snapshot["balance"], "0.00")
-        self.assertEqual(service.state().pending_stack_value, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.net_change, Decimal("0.00"))
+        self.assertEqual(result.balance_after, Decimal("0.75"))
+        self.assertEqual(snapshot["balance"], "0.75")
+        self.assertEqual(service.state().eligible_reviews_since_spin_check, 2)
+        self.assertEqual(service.state().pending_stack_value, Decimal("-2.00"))
 
     def test_good_updates_balance_streak_and_history_with_decimal_payout(self) -> None:
         config = make_config(answer_base_values={"hard": 0})
@@ -843,7 +844,7 @@ class ServiceTests(unittest.TestCase):
 
             self.assertFalse(service.undo_last_review())
 
-    def test_no_op_review_does_not_consume_previous_real_slot_undo(self) -> None:
+    def test_zero_value_review_keeps_its_own_undo_progress(self) -> None:
         config = make_config(answer_base_values={"hard": 0})
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_file = Path(tmp_dir) / "state.json"
@@ -859,12 +860,15 @@ class ServiceTests(unittest.TestCase):
 
             service.apply_review(card_id=2, ease=2, button_count=4)
             after_no_op_snapshot = service.snapshot()
-            self.assertFalse(after_no_op_snapshot["can_undo"])
-            self.assertFalse(service.undo_last_review())
-            self.assertEqual(after_no_op_snapshot["balance"], state_after_real_review["balance"])
+            self.assertTrue(after_no_op_snapshot["can_undo"])
+            self.assertEqual(
+                after_no_op_snapshot["balance"], state_after_real_review["balance"]
+            )
             self.assertNotEqual(after_no_op_snapshot["last_result"], state_after_real_review["last_result"])
             self.assertEqual(after_no_op_snapshot["last_result"]["answer_key"], "hard")
             self.assertTrue(after_no_op_snapshot["last_result"]["no_spin"])
+            self.assertTrue(service.undo_last_review())
+            self.assertEqual(service.snapshot(), state_after_real_review)
 
             self.assertTrue(service.undo_last_review())
 

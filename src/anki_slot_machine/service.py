@@ -334,7 +334,7 @@ class SlotMachineService:
                 base_reward_override=(
                     stacked_value if should_settle_stack else answer_value
                 ),
-                payout_on_no_spin=should_settle_stack,
+                payout_on_no_spin=False,
                 stack_value_override=stacked_value,
             )
         today = datetime.now().astimezone().date().isoformat()
@@ -357,13 +357,11 @@ class SlotMachineService:
             previous_reel_positions_by_machine=state.reel_positions,
             did_spin_override=did_spin,
             base_reward_override=stacked_value if should_settle_stack else answer_value,
-            payout_on_no_spin=should_settle_stack,
+            payout_on_no_spin=False,
             stack_value_override=stacked_value,
         )
-        next_trigger_count = 0 if should_settle_stack else next_trigger_count
-        next_pending_stack_value = (
-            Decimal("0") if should_settle_stack else stacked_value
-        )
+        next_trigger_count = 0 if did_spin else next_trigger_count
+        next_pending_stack_value = Decimal("0") if did_spin else stacked_value
         dropped_history_event = (
             state.history[config.history_limit - 1]
             if len(state.history) >= config.history_limit

@@ -18,8 +18,8 @@ All notable changes to this project will be documented in this file.
   `spin_trigger_every_n` reviews.
 - Updated the delayed spin trigger so `Again`, `Hard`, `Good`, and `Easy` all
   use the same shared counter and stacked payout flow.
-- Changed failed delayed spin checks to pay the stacked amount directly instead
-  of discarding the build-up.
+- Changed failed delayed spin checks to keep the stack pending until a real
+  spin happens.
 - Updated the live stats tape to show only actual spin prints, and removed the
   answer-tag prefix from each printed line for a cleaner feed.
 
