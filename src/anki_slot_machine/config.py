@@ -47,6 +47,7 @@ DEFAULT_DECIMAL_PLACES = 2
 DEFAULT_SPIN_ANIMATION_DURATION_MS = 750
 DEFAULT_SPIN_TRIGGER_EVERY_N = 1
 DEFAULT_SPIN_TRIGGER_CHANCE = Decimal("1")
+DEFAULT_STEALTH_MODE_ENABLED = False
 DEFAULT_ANSWER_BASE_VALUES = {
     "again": Decimal("0"),
     "hard": Decimal("0.5"),
@@ -111,6 +112,7 @@ class SlotMachineConfig:
     spin_animation_duration_ms: int
     spin_trigger_every_n: int
     spin_trigger_chance: Decimal
+    stealth_mode_enabled: bool
     history_limit: int
     milestone_thresholds: tuple[int, ...]
 
@@ -171,6 +173,14 @@ def _spin_trigger_chance(raw_value) -> Decimal:
     if value > ONE:
         return ONE
     return value
+
+
+def _stealth_mode_enabled(raw_value) -> bool:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if raw_value is None:
+        return DEFAULT_STEALTH_MODE_ENABLED
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _default_machine_label(profile_name: str, index: int) -> str:
@@ -513,6 +523,7 @@ def config_from_raw(
         ),
         spin_trigger_every_n=_spin_trigger_every_n(raw.get("spin_trigger_every_n")),
         spin_trigger_chance=_spin_trigger_chance(raw.get("spin_trigger_chance")),
+        stealth_mode_enabled=_stealth_mode_enabled(raw.get("stealth_mode_enabled")),
         history_limit=DEFAULT_HISTORY_LIMIT,
         milestone_thresholds=DEFAULT_MILESTONE_THRESHOLDS,
     )

@@ -53,7 +53,7 @@ That’s it. That’s the product.
 - **Hard**, **Good**, and **Easy** → run the slot and multiply their payout (`0.5`, `1`, and `1.5` by default)  
   → fake finance begins
 
-- **Again** → `0` by default, so no spin and no reward  
+- **Again** → `0` by default, so it usually adds nothing  
   → but if you believe learning should involve suffering, you can make it negative in the config
 
 - **No match** → `x0`  
@@ -64,6 +64,9 @@ That’s it. That’s the product.
 
 - **Triple** → profile triple multiplier  
   → the machine acknowledges your existence
+
+- **Stacked mode** → every review adds its configured value to one shared stack, and every `spin_trigger_every_n` reviews that stack either spins or pays directly  
+  → delayed chaos
 
 ---
 
@@ -79,8 +82,8 @@ Like life. But compressed into 300ms.
 
 ## 🧮 How it works (for nerds)
 
-- The add-on loads one or more slot profile JSON files
-- Each visible machine uses its own profile
+- The add-on loads one shared slot profile JSON file
+- Every visible machine uses that same profile
 - All machines share one bankroll, one streak, and one stats feed
 - Reel probabilities come directly from the configured face counts
 - The backend builds a real reel strip from those faces and keeps reel positions per machine
@@ -98,6 +101,7 @@ It just runs the profiles you give it.
 
 ## Short Changelog
 
+- `v0.0.10` Shared stacked settlements, Stealth Mode auto-hide/show behavior, and a Stealth-only collapsed `Slots` progress label.
 - `v0.0.9` Settings dialog, cleaner controls, and reviewer polish.
 - `v0.0.8` Configurable rewards, cleaner odds, and lag fixes.
 - `v0.0.7` One-slot default, collapsed controls, configurable spin triggering, and lighter DOM usage.
@@ -119,6 +123,7 @@ It just runs the profiles you give it.
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
   "spin_trigger_chance": 1.0,
+  "stealth_mode_enabled": false,
   "answer_base_values": {
     "again": 0.0,
     "hard": 0.5,
@@ -170,8 +175,9 @@ Useful intuition:
 - `pair_multipliers` → what an exact pair pays  
 - `triple_multipliers` → what a triple pays  
 - `spin_animation_duration_ms` → total reel animation budget, capped at `750`  
-- `spin_trigger_every_n` → run a spin check every `n` `Good` / `Easy` reviews  
+- `spin_trigger_every_n` → stack `n` reviews, then settle the pot  
 - `spin_trigger_chance` → chance that the spin actually happens at that check  
+- `stealth_mode_enabled` → keep slot windows hidden until a real spin happens, then keep them visible until the next non-spin review; in this mode the collapsed `Slots` button shows stack progress  
 - `answer_base_values` → signed per-answer base values, configurable in JSON  
 - `slot_profile_path` → which shared profile every machine window loads  
 - `machines` → which machine windows appear on screen  

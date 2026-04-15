@@ -314,6 +314,49 @@
     refs.cancelButton.hidden = !closeAllConfirmOpen;
   }
 
+  function triggerProgressLabel(state) {
+    if (!state || !state.stealth_mode_enabled) {
+      return "Slots";
+    }
+    const everyN = Math.max(
+      1,
+      Number.parseInt(
+        String(state && state.spin_trigger_every_n != null ? state.spin_trigger_every_n : 1),
+        10,
+      ) || 1,
+    );
+    const currentCount = Math.max(
+      0,
+      Math.min(
+        everyN,
+        Number.parseInt(
+          String(
+            state && state.eligible_reviews_since_spin_check != null
+              ? state.eligible_reviews_since_spin_check
+              : 0,
+          ),
+          10,
+        ) || 0,
+      ),
+    );
+    const pendingValue =
+      state && state.pending_stack_value != null ? state.pending_stack_value : 0;
+    const pendingNumber = moneyNumber(pendingValue);
+    const pendingText =
+      pendingNumber < 0
+        ? `-${Math.abs(pendingNumber).toFixed(2)}$`
+        : `${Math.abs(pendingNumber).toFixed(2)}$`;
+    return `Slots ${currentCount}/${everyN} ${pendingText}`;
+  }
+
+  function syncControlPanelProgress(state) {
+    ensureControlPanel();
+    if (!controlPanelRefs || !controlPanelRefs.expandButton) {
+      return;
+    }
+    controlPanelRefs.expandButton.textContent = triggerProgressLabel(state || {});
+  }
+
   function updateMachineTitle(view, label) {
     view.label = String(label || "Slot Machine");
     if (view.els.title) {
@@ -961,6 +1004,11 @@
     view.els.status.textContent = text;
   }
 
+  function unsignedMoney(value) {
+    const numericValue = moneyNumber(value);
+    return `$${Math.abs(numericValue).toFixed(2)}`;
+  }
+
   function isNoSpinLikeResult(result) {
     if (!result) {
       return false;
@@ -979,7 +1027,20 @@
 
   function syncNoSpinStatus(view, result) {
     if (isNoSpinLikeResult(result)) {
-      showStatus(view, "No spin", "neutral");
+      const payoutNumber = moneyNumber(result && result.payout != null ? result.payout : 0);
+      const stackValue = result && result.stack_value != null ? result.stack_value : 0;
+      const stackNumber = moneyNumber(stackValue);
+      if (payoutNumber > 0 || payoutNumber < 0) {
+        const tone = payoutNumber > 0 ? "win" : "loss";
+        const verb = payoutNumber > 0 ? "paid" : "lost";
+        showStatus(view, `Stack ${verb} ${unsignedMoney(payoutNumber)}`, tone);
+        return;
+      }
+      if (stackNumber !== 0) {
+        showStatus(view, `Stack ${unsignedMoney(stackValue)}`, "neutral");
+        return;
+      }
+      showStatus(view, "No hit", "neutral");
       return;
     }
     clearStatus(view);
@@ -1050,6 +1111,7 @@
     const payoutValue = result && result.payout != null ? result.payout : 0;
     const netChangeValue = result && result.net_change != null ? result.net_change : 0;
     const baseRewardValue = result && result.base_reward != null ? result.base_reward : 0;
+    const stackValue = result && result.stack_value != null ? result.stack_value : baseRewardValue;
     const slotMultiplierValue = result && result.slot_multiplier != null ? result.slot_multiplier : 0;
     const netChangeNumber = moneyNumber(netChangeValue);
     const isZeroPayout = moneyNumber(payoutValue) === 0;
@@ -1078,9 +1140,9 @@
       baseNode.className = "anki-slot-machine-breakdown-line is-neutral";
       bonusNode.className = "anki-slot-machine-breakdown-line is-neutral";
       baseNode.textContent =
-        moneyNumber(baseRewardValue) === 0
-          ? signedMoney(baseRewardValue)
-          : signedMoney(baseRewardValue, { showPositive: true });
+        moneyNumber(stackValue) === 0
+          ? signedMoney(stackValue)
+          : signedMoney(stackValue, { showPositive: true });
       bonusNode.textContent = "";
       totalNode.className = "anki-slot-machine-breakdown-line is-total is-neutral";
       totalNode.textContent = "";
@@ -1147,6 +1209,15 @@
 
     if (isNoSpinLikeResult(result)) {
       syncNoSpinStatus(view, result);
+      if (netChangeNumber === 0) {
+        clearAmount(view);
+        return;
+      }
+      if (netChangeNumber < 0) {
+        flashLoss(view);
+        burstParticles(view, "loss");
+      }
+      showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
       return;
     }
     if (netChangeNumber < 0) {
@@ -1207,11 +1278,27 @@
     delete machineViews[machineKey];
   }
 
+  function shouldHideMachine(state, machineResult) {
+    if (!state || !state.stealth_mode_enabled) {
+      return false;
+    }
+    return !(machineResult && machineResult.did_spin);
+  }
+
+  function syncMachineVisibility(view, state, machineResult) {
+    const hidden = shouldHideMachine(state, machineResult);
+    if (hidden && view.activeSpin) {
+      stopSpinAnimation(view);
+    }
+    view.root.hidden = hidden;
+  }
+
   function syncState(nextState) {
     const state = nextState || {};
     const suppressAnimation = Boolean(state.suppress_animation);
 
     ensureControlPanel();
+    syncControlPanelProgress(state);
 
     const machines = Array.isArray(state.machines)
       ? state.machines
@@ -1266,6 +1353,7 @@
       view.spinDurationMs = clampSpinDuration(state.spin_animation_duration_ms);
 
       const machineResult = machineResultFor(state.last_result, key);
+      syncMachineVisibility(view, state, machineResult);
 
       if (!view.hasHydratedResult) {
         if (machineResult && machineResult.event_id) {

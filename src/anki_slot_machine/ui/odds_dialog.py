@@ -75,12 +75,16 @@ class SlotMachineOddsDialog(QDialog):
                 f"Easy {format_decimal(config.answer_base_values['easy'], config.decimal_places)}"
             ),
             (
-                "Aggregate expected Good payout per review: "
+                "Aggregate expected Good payout per settled machine spin: "
                 f"${format_decimal(aggregate_good, config.decimal_places)}"
             ),
             (
-                "Aggregate expected Easy payout per review: "
+                "Aggregate expected Easy payout per settled machine spin: "
                 f"${format_decimal(aggregate_easy, config.decimal_places)}"
+            ),
+            (
+                "Spin trigger: all answers build one shared stack; the Nth review settles "
+                "that stack and may turn the settlement into a spin."
             ),
         ]
 
@@ -98,19 +102,19 @@ class SlotMachineOddsDialog(QDialog):
                 f"Any triple probability: {_percent(summary.total_triple_probability)}",
                 f"Any hit probability: {_percent(summary.hit_probability)}",
                 (
-                    "Expected Again payout: "
+                    "Expected Again payout per settled machine spin: "
                     f"${format_decimal(summary.expected_again_payout, config.decimal_places)}"
                 ),
                 (
-                    "Expected Hard payout: "
+                    "Expected Hard payout per settled machine spin: "
                     f"${format_decimal(summary.expected_hard_payout, config.decimal_places)}"
                 ),
                 (
-                    "Expected Good payout: "
+                    "Expected Good payout per settled machine spin: "
                     f"${format_decimal(summary.expected_good_payout, config.decimal_places)}"
                 ),
                 (
-                    "Expected Easy payout: "
+                    "Expected Easy payout per settled machine spin: "
                     f"${format_decimal(summary.expected_easy_payout, config.decimal_places)}"
                 ),
                 "",

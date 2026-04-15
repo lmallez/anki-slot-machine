@@ -146,6 +146,18 @@ class _QPushButton(_BaseWidget):
         self.clicked = _Signal()
 
 
+class _QCheckBox(_BaseWidget):
+    def __init__(self, *_args, **_kwargs) -> None:
+        super().__init__()
+        self._checked = False
+
+    def setChecked(self, value: bool) -> None:
+        self._checked = bool(value)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+
 class _SpinBox(_BaseWidget):
     def __init__(self, *_args, **_kwargs) -> None:
         super().__init__()
@@ -340,6 +352,7 @@ def install_stubs() -> SimpleNamespace:
     qt_module = ModuleType("aqt.qt")
     qt_module.QAction = _QAction
     qt_module.QMenu = _QMenu
+    qt_module.QCheckBox = _QCheckBox
     qt_module.QDialog = _QDialog
     qt_module.QDoubleSpinBox = _DoubleSpinBox
     qt_module.QFrame = _QFrame

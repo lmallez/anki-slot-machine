@@ -14,6 +14,7 @@ DECIMAL_EVENT_FIELDS = (
     "bet",
     "payout",
     "base_reward",
+    "stack_value",
     "slot_bonus",
     "net_change",
     "balance_after",
@@ -24,6 +25,7 @@ DECIMAL_STATE_FIELDS = (
     "total_won",
     "total_lost",
     "biggest_jackpot",
+    "pending_stack_value",
 )
 UNDO_FORMAT_VERSION = 1
 UNDO_HISTORY_LIMIT = 20
@@ -310,6 +312,7 @@ class SlotMachineState:
     last_result: dict | None = None
     reel_positions: dict[str, list[int]] = field(default_factory=dict)
     eligible_reviews_since_spin_check: int = 0
+    pending_stack_value: Decimal = Decimal("0")
     undo_history: list[dict] = field(default_factory=list)
     review_undo_stack: list[bool] = field(default_factory=list)
 
@@ -378,6 +381,10 @@ class SlotMachineState:
             eligible_reviews_since_spin_check=max(
                 0, int(data.get("eligible_reviews_since_spin_check", 0))
             ),
+            pending_stack_value=parse_stored_decimal(
+                data.get("pending_stack_value"),
+                config.decimal_places,
+            ),
             undo_history=undo_history,
             review_undo_stack=review_undo_stack,
         )
@@ -410,6 +417,10 @@ class SlotMachineState:
             "last_result": copy.deepcopy(self.last_result),
             "reel_positions": copy.deepcopy(self.reel_positions),
             "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
+            "pending_stack_value": format_decimal(
+                self.pending_stack_value,
+                decimal_places,
+            ),
             "dropped_history_event": copy.deepcopy(dropped_history_event),
         }
 
@@ -433,6 +444,7 @@ class SlotMachineState:
         self.eligible_reviews_since_spin_check = (
             restored.eligible_reviews_since_spin_check
         )
+        self.pending_stack_value = restored.pending_stack_value
         self.undo_history = restored.undo_history
         self.review_undo_stack = restored.review_undo_stack
 
@@ -476,6 +488,10 @@ class SlotMachineState:
             0,
             int(normalized.get("eligible_reviews_since_spin_check", 0)),
         )
+        self.pending_stack_value = parse_stored_decimal(
+            normalized.get("pending_stack_value"),
+            config.decimal_places,
+        )
 
         review_day = str(normalized.get("daily_earnings_date") or "").strip()
         had_daily_entry = bool(normalized.get("had_daily_earnings_entry"))
@@ -514,6 +530,10 @@ class SlotMachineState:
             "last_result": self.last_result,
             "reel_positions": self.reel_positions,
             "eligible_reviews_since_spin_check": self.eligible_reviews_since_spin_check,
+            "pending_stack_value": format_decimal(
+                self.pending_stack_value,
+                decimal_places,
+            ),
             "undo_history": self.undo_history,
             "review_undo_stack": self.review_undo_stack,
         }

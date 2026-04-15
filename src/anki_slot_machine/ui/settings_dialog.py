@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from aqt import mw
 from aqt.qt import (
+    QCheckBox,
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
@@ -26,6 +27,7 @@ def build_settings_config(
     answer_base_values: dict[str, float],
     spin_trigger_chance: float,
     spin_trigger_every_n: int,
+    stealth_mode_enabled: bool,
 ) -> dict:
     source = dict(raw_config or {})
     existing_answer_values = source.get("answer_base_values")
@@ -40,6 +42,7 @@ def build_settings_config(
     source["answer_base_values"] = merged
     source["spin_trigger_chance"] = float(spin_trigger_chance)
     source["spin_trigger_every_n"] = int(spin_trigger_every_n)
+    source["stealth_mode_enabled"] = bool(stealth_mode_enabled)
     return source
 
 
@@ -57,6 +60,9 @@ class SlotMachineSettingsDialog(QDialog):
                 color: #f2f2ed;
             }
             QLabel {
+                color: #f2f2ed;
+            }
+            QCheckBox {
                 color: #f2f2ed;
             }
             QPushButton {
@@ -125,7 +131,9 @@ class SlotMachineSettingsDialog(QDialog):
 
         root.addWidget(QLabel("<b>Spin Trigger</b>"))
 
-        trigger_help = QLabel("Controls how often Good/Easy answers trigger a spin.")
+        trigger_help = QLabel(
+            "Controls how often reviews settle the shared stack and check for a spin."
+        )
         trigger_help.setWordWrap(True)
         root.addWidget(trigger_help)
 
@@ -154,7 +162,23 @@ class SlotMachineSettingsDialog(QDialog):
             "Every N",
             self._field(
                 self.spin_trigger_every_n_input,
-                "Number of reviews before checking spin chance.",
+                "Number of reviews to stack before settling the pot.",
+            ),
+        )
+
+        self.stealth_mode_enabled_input = QCheckBox(
+            "hide slots until a spin happens",
+            self,
+        )
+        self.stealth_mode_enabled_input.setChecked(
+            bool(self._config.stealth_mode_enabled)
+        )
+        trigger_form.addRow(
+            "Stealth Mode",
+            self._field(
+                self.stealth_mode_enabled_input,
+                "Keeps slot windows hidden until an actual spin occurs, then leaves "
+                "them visible until the next non-spin review.",
             ),
         )
 
@@ -215,6 +239,7 @@ class SlotMachineSettingsDialog(QDialog):
             },
             spin_trigger_chance=self.spin_trigger_chance_input.value(),
             spin_trigger_every_n=self.spin_trigger_every_n_input.value(),
+            stealth_mode_enabled=self.stealth_mode_enabled_input.isChecked(),
         )
 
         write_addon_config(updated)

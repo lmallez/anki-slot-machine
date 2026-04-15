@@ -218,6 +218,7 @@ class ConfigProfileTests(unittest.TestCase):
         default_config = load_test_config()
         self.assertEqual(default_config.spin_trigger_every_n, 1)
         self.assertEqual(default_config.spin_trigger_chance, Decimal("1"))
+        self.assertFalse(default_config.stealth_mode_enabled)
 
         clamped_config = load_test_config(
             spin_trigger_every_n=0,
@@ -228,6 +229,12 @@ class ConfigProfileTests(unittest.TestCase):
 
         low_chance_config = load_test_config(spin_trigger_chance=-1)
         self.assertEqual(low_chance_config.spin_trigger_chance, Decimal("0"))
+
+    def test_stealth_mode_settings_are_loaded(self) -> None:
+        self.assertTrue(load_test_config(stealth_mode_enabled=True).stealth_mode_enabled)
+        self.assertFalse(
+            load_test_config(stealth_mode_enabled="off").stealth_mode_enabled
+        )
 
 
 if __name__ == "__main__":

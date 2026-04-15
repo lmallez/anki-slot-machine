@@ -52,20 +52,13 @@ def _answer_base_value(config: SlotMachineConfig, answer_key: str) -> Decimal:
 
 def _should_trigger_spin(
     *,
-    answer_key: str,
-    eligible_reviews_since_spin_check: int,
+    stacked_value: Decimal,
     config: SlotMachineConfig,
     rng: random.Random,
-) -> tuple[bool, int]:
-    if _answer_base_value(config, answer_key) == Decimal("0"):
-        return False, eligible_reviews_since_spin_check
-
-    next_count = eligible_reviews_since_spin_check + 1
-    if next_count < config.spin_trigger_every_n:
-        return False, next_count
-
-    did_spin = rng.random() < float(config.spin_trigger_chance)
-    return did_spin, 0
+) -> bool:
+    if stacked_value == Decimal("0"):
+        return False
+    return rng.random() < float(config.spin_trigger_chance)
 
 
 def _event_decimal(event: dict, field_name: str) -> Decimal:
@@ -291,6 +284,15 @@ class SlotMachineService:
             "can_undo": bool(state.review_undo_stack and state.review_undo_stack[0]),
             "machines": machine_payload,
             "spin_animation_duration_ms": config.spin_animation_duration_ms,
+            "spin_trigger_every_n": config.spin_trigger_every_n,
+            "eligible_reviews_since_spin_check": (
+                state.eligible_reviews_since_spin_check
+            ),
+            "stealth_mode_enabled": config.stealth_mode_enabled,
+            "pending_stack_value": format_decimal(
+                state.pending_stack_value,
+                config.decimal_places,
+            ),
             "card_id": card_id,
             "answer_button_count": answer_button_count,
             "tier_name": tier_name,
@@ -310,8 +312,17 @@ class SlotMachineService:
             key: list(value) for key, value in state.reel_positions.items()
         }
         previous_trigger_count = state.eligible_reviews_since_spin_check
+        previous_pending_stack_value = state.pending_stack_value
         bet = quantize_decimal(REVIEW_BET, config.decimal_places)
         answer_key = answer_key_for_rating(ease, button_count)
+        answer_value = _answer_base_value(config, answer_key)
+        stacked_value = quantize_decimal(
+            state.pending_stack_value + answer_value,
+            config.decimal_places,
+        )
+        next_trigger_count = state.eligible_reviews_since_spin_check + 1
+        should_settle_stack = next_trigger_count >= config.spin_trigger_every_n
+
         if not config.machines:
             return build_round_result(
                 config,
@@ -320,13 +331,21 @@ class SlotMachineService:
                 bet=bet,
                 balance_before=state.balance,
                 rng=self._rng,
+                base_reward_override=(
+                    stacked_value if should_settle_stack else answer_value
+                ),
+                payout_on_no_spin=should_settle_stack,
+                stack_value_override=stacked_value,
             )
         today = datetime.now().astimezone().date().isoformat()
-        did_spin, next_trigger_count = _should_trigger_spin(
-            answer_key=answer_key,
-            eligible_reviews_since_spin_check=state.eligible_reviews_since_spin_check,
-            config=config,
-            rng=self._rng,
+        did_spin = (
+            _should_trigger_spin(
+                stacked_value=stacked_value,
+                config=config,
+                rng=self._rng,
+            )
+            if should_settle_stack
+            else False
         )
         result = build_round_result(
             config,
@@ -337,6 +356,13 @@ class SlotMachineService:
             rng=self._rng,
             previous_reel_positions_by_machine=state.reel_positions,
             did_spin_override=did_spin,
+            base_reward_override=stacked_value if should_settle_stack else answer_value,
+            payout_on_no_spin=should_settle_stack,
+            stack_value_override=stacked_value,
+        )
+        next_trigger_count = 0 if should_settle_stack else next_trigger_count
+        next_pending_stack_value = (
+            Decimal("0") if should_settle_stack else stacked_value
         )
         dropped_history_event = (
             state.history[config.history_limit - 1]
@@ -374,12 +400,15 @@ class SlotMachineService:
             previous_trigger_count=previous_trigger_count,
             next_trigger_count=next_trigger_count,
         )
+        if previous_pending_stack_value != next_pending_stack_value:
+            is_undoable = True
         serialized_result = result.to_dict(config.decimal_places)
         serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
         serialized_result["slot_instance_key"] = addon_instance_key()
         serialized_result["slot_instance_label"] = addon_package_name()
         state.reel_positions = next_reel_positions
         state.eligible_reviews_since_spin_check = next_trigger_count
+        state.pending_stack_value = next_pending_stack_value
         state.last_result = serialized_result
 
         if is_undoable:

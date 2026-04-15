@@ -10,10 +10,12 @@ changes Anki scheduling, intervals, or note data.
   displayed multipliers.
 - `spin_animation_duration_ms`: total reel animation budget in milliseconds,
   clamped between `150` and `750`.
-- `spin_trigger_every_n`: run a spin check every `n` eligible reviews. Default
-  is `1`.
+- `spin_trigger_every_n`: settle the shared stack every `n` reviews. Default is
+  `1`.
 - `spin_trigger_chance`: chance to spin when that check happens, from `0.0` to
   `1.0`. Default is `1.0`.
+- `stealth_mode_enabled`: when `true`, hide slot windows until an actual spin
+  occurs, then keep them visible until the next non-spin review.
 - `answer_base_values`: signed base value for each answer button. These values
   can be positive, zero, or negative.
 - `slot_profile_path`: path to the shared slot profile JSON file, relative to
@@ -31,6 +33,7 @@ Example config:
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
   "spin_trigger_chance": 1.0,
+  "stealth_mode_enabled": false,
   "answer_base_values": {
     "again": 0.0,
     "hard": 0.5,
@@ -93,28 +96,39 @@ but the configured face counts and resulting probabilities stay the same.
 
 ## Reward rules
 
-- `Again`: applies `answer_base_values.again x multiplier` when its configured
-  base value is not `0`.
-- `Hard`: never spins and applies `answer_base_values.hard` directly.
-- `Good`: spins only when the configured trigger check succeeds, and then
-  applies `answer_base_values.good x multiplier`.
-- `Easy`: spins only when the configured trigger check succeeds, and then
-  applies `answer_base_values.easy x multiplier`.
-- Any answer with a configured base value of `0` does not spin.
+- Every review adds its configured answer value into one shared stack.
+- `Again`, `Hard`, `Good`, and `Easy` all use the same trigger behavior.
+- Reviews before the threshold do not change the balance yet; they only build
+  the shared stack.
+- When the shared review counter reaches `spin_trigger_every_n`, the backend
+  settles the full stacked value.
+- If `spin_trigger_chance` passes on that settlement, the spin payout becomes
+  `stacked_value x multiplier`.
+- If the chance check fails, the stacked value is paid directly without a slot
+  multiplier.
+- Any answer with a configured value of `0` still counts toward the threshold,
+  but contributes `0` to the stack.
 - Negative outcomes are clamped so the shared balance never goes below zero.
 - A no-match spin uses `x0`.
 - An exact pair uses the profile pair multiplier for that symbol.
 - A triple uses the profile triple multiplier for that symbol.
 
+Stealth Mode behavior:
+
+- When `stealth_mode_enabled` is `true`, slot windows stay hidden until an
+  actual spin occurs.
+- After a spin, the windows stay visible until the next non-spin review.
+- The collapsed `Slots` button shows stack progress only while Stealth Mode is
+  enabled.
+
 Trigger logic:
 
-- `Again` spins only when its configured base value is not `0`.
-- `Hard` never spins.
-- `Good` and `Easy` increment one shared review counter when their configured
-  base value is not `0`.
-- When that counter reaches `spin_trigger_every_n`, the backend rolls
-  `spin_trigger_chance`.
-- The counter resets after each trigger check, whether the spin happens or not.
+- Every review increments one shared review counter.
+- Each review also adds its signed configured value into one shared stack.
+- When the counter reaches `spin_trigger_every_n`, the backend rolls
+  `spin_trigger_chance` against that full stacked amount.
+- The counter and stack reset after each settlement, whether the slot actually
+  spins or the stack is paid directly.
 
 ## How probabilities work
 
@@ -140,7 +154,8 @@ Tools -> Slot Machine -> Show Odds and Rewards shows:
 - per-symbol reel probability
 - per-symbol pair multiplier
 - per-symbol triple multiplier
-- expected answer payouts from the configured signed base values
+- expected answer payouts for a settled single-machine spin using the configured
+  signed base values
 
 ## Persistence
 

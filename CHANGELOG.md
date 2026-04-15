@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.10] - 2026-04-15
+
+### Added
+
+- Added `stealth_mode_enabled` so slot windows can stay hidden between non-spin
+  reviews and only appear for real spins.
+- Added a collapsed `Slots` progress label in Stealth Mode to show the current
+  stacked progress and pending amount without reopening the slot windows.
+
+### Changed
+
+- Reworked delayed spin rewards into a shared stacked-settlement flow where
+  every review contributes its configured value and the full stack settles every
+  `spin_trigger_every_n` reviews.
+- Updated the delayed spin trigger so `Again`, `Hard`, `Good`, and `Easy` all
+  use the same shared counter and stacked payout flow.
+- Changed failed delayed spin checks to pay the stacked amount directly instead
+  of discarding the build-up.
+- Updated the live stats tape to show only actual spin prints, and removed the
+  answer-tag prefix from each printed line for a cleaner feed.
+
 ## [v0.0.9] - 2026-04-12
 
 ### Added

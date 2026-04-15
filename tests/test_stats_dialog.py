@@ -30,7 +30,7 @@ class StatsDialogFormattingTests(unittest.TestCase):
 
         block = _history_block(event)
 
-        self.assertIn("[Good] +$2.50 -> $116.25 · clean hit", block)
+        self.assertIn("+$2.50 -> $116.25 · clean hit", block)
         self.assertIn("$1.00 x 2.50 = +$2.50", block)
 
     def test_history_block_keeps_legacy_events_without_calculation_fields(self) -> None:
@@ -50,7 +50,7 @@ class StatsDialogFormattingTests(unittest.TestCase):
 
         block = _history_block(event)
 
-        self.assertIn("[Good] +$2.50 -> $116.25 · small edge", block)
+        self.assertIn("+$2.50 -> $116.25 · small edge", block)
         self.assertNotIn(" = +$2.50", block)
 
     def test_history_block_includes_machine_breakdown_for_multi_slot_rounds(self) -> None:
@@ -96,7 +96,7 @@ class StatsDialogFormattingTests(unittest.TestCase):
 
         block = _history_block(event)
 
-        self.assertIn("[Good] +$3.45 -> $103.45 · jackpot spread", block)
+        self.assertIn("+$3.45 -> $103.45 · jackpot spread", block)
         self.assertIn("Alpha: 🐟 🐟 🐟 · clean hit", block)
         self.assertIn("Beta: 🍖 🍀 🍖 · small edge", block)
 
@@ -181,6 +181,99 @@ class StatsDialogFormattingTests(unittest.TestCase):
 
         self.assertEqual(dialog.history_view._plain_text_updates, initial_history_updates)
         self.assertEqual(dialog.quant_view._plain_text_updates, initial_quant_updates)
+
+    def test_live_tape_filters_out_non_spin_history_entries(self) -> None:
+        from anki_slot_machine.ui import stats_dialog
+
+        snapshot = {
+            "balance": "100.00",
+            "today_net": "0.00",
+            "recent_10": {
+                "net": "0.00",
+                "hit_count": 0,
+                "spin_count": 0,
+                "trend_arrow": "→",
+                "trend_label": "steady",
+            },
+            "recent_50": {
+                "net": "0.00",
+                "hit_count": 0,
+                "spin_count": 0,
+                "trend_arrow": "→",
+                "trend_label": "steady",
+            },
+            "recent_100": {
+                "net": "0.00",
+                "hit_count": 0,
+                "spin_count": 0,
+                "trend_arrow": "→",
+                "trend_label": "steady",
+            },
+            "current_streak": 0,
+            "streak_context": "cooled off",
+            "best_streak": 1,
+            "spin_win_rate": 0.0,
+            "pair_hits": 0,
+            "triple_hits": 0,
+            "answer_counts": {"again": 0, "hard": 1, "good": 1, "easy": 0},
+            "volatility_label": "quiet",
+            "average_win": "0.00",
+            "average_loss": "0.00",
+            "best_win": "0.00",
+            "worst_loss": "0.00",
+            "biggest_jackpot": "0.00",
+            "history_count": 2,
+            "lifetime_net": "0.00",
+            "session_temperature": "holding steady",
+            "graph_history": [],
+            "history": [
+                {
+                    "event_id": "evt-spin",
+                    "answer_key": "good",
+                    "answer_label": "Good",
+                    "timestamp": "2026-04-09T17:51:35+09:00",
+                    "net_change": "2.50",
+                    "balance_after": "102.50",
+                    "did_spin": True,
+                    "line_hit": True,
+                    "reels": ["SLOT_1", "SLOT_1", "SLOT_1"],
+                    "base_reward": "1.00",
+                    "slot_multiplier": "2.50",
+                    "matched_symbol": "SLOT_1",
+                },
+                {
+                    "event_id": "evt-stack",
+                    "answer_key": "hard",
+                    "answer_label": "Hard",
+                    "timestamp": "2026-04-09T17:52:35+09:00",
+                    "net_change": "0.00",
+                    "balance_after": "102.50",
+                    "did_spin": False,
+                    "no_spin": True,
+                    "base_reward": "0.50",
+                    "stack_value": "1.50",
+                },
+            ],
+            "last_result": {
+                "event_id": "evt-spin",
+                "net_change": "2.50",
+                "timestamp": "2026-04-09T17:51:35+09:00",
+                "answer_key": "good",
+                "line_hit": True,
+                "matched_symbol": "SLOT_1",
+                "payout": "2.50",
+            },
+        }
+
+        service = type("FakeService", (), {"stats_snapshot": lambda self: snapshot})()
+
+        with patch.object(stats_dialog, "get_service", return_value=service):
+            dialog = stats_dialog.SlotMachineStatsDialog()
+
+        history_text = dialog.history_view._text
+        self.assertIn("+$2.50 -> $102.50 · clean hit", history_text)
+        self.assertNotIn("evt-stack", history_text)
+        self.assertNotIn("[Hard]", history_text)
 
 
 if __name__ == "__main__":

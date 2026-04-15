@@ -214,7 +214,6 @@ def _calculation_strip(event: dict) -> str:
 
 
 def _history_block(event: dict) -> str:
-    answer = str(event.get("answer_label", "Roll"))
     change = _signed_money(str(event.get("net_change", "0")))
     balance = f"${event.get('balance_after', '0')}"
     commentary = _trade_commentary(event)
@@ -240,7 +239,7 @@ def _history_block(event: dict) -> str:
             if machine_calc:
                 machine_line = f"{machine_line} · {machine_calc}"
             machine_lines.append(machine_line)
-    block = f"[{answer}] {change} -> {balance} · {commentary}\n{details}"
+    block = f"{change} -> {balance} · {commentary}\n{details}"
     if machine_lines:
         block = f"{block}\n" + "\n".join(machine_lines)
     return block
@@ -261,6 +260,10 @@ def _history_signature(
         )
         for event in events
     )
+
+
+def _printed_history_events(events: list[dict]) -> list[dict]:
+    return [event for event in events if bool(event.get("did_spin"))]
 
 
 def _market_state(snapshot: dict) -> str:
@@ -864,7 +867,7 @@ class SlotMachineStatsDialog(QDialog):
             "<div style='font-size:13px; font-weight:700; color:#f2f2ed;'>LIVE TAPE</div>"
             "<div style='color:#c9c2b4; font-size:11px;'>Newest first. Short, punchy, mildly overconfident.</div>"
         )
-        history_events = snapshot.get("history", [])
+        history_events = _printed_history_events(snapshot.get("history", []))
         history_signature = _history_signature(history_events)
         history_lines = [_history_block(event) for event in history_events]
         if not history_lines:

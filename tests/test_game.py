@@ -348,7 +348,7 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.payout, Decimal("0.00"))
         self.assertEqual(result.reel_step_counts, (0, 0, 0))
 
-    def test_spin_result_for_again_without_spin_override_is_a_no_op(self) -> None:
+    def test_spin_result_for_again_without_spin_override_applies_base_reward(self) -> None:
         config = make_config(answer_base_values={"again": -1})
         previous_positions = (0, 35, 60)
         result = game_module.build_spin_result(
@@ -365,9 +365,33 @@ class RewardTests(unittest.TestCase):
         self.assertFalse(result.did_spin)
         self.assertTrue(result.no_spin)
         self.assertEqual(result.base_reward, Decimal("-1.00"))
-        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("-1.00"))
+        self.assertEqual(result.net_change, Decimal("-1.00"))
+        self.assertEqual(result.balance_after, Decimal("99.00"))
         self.assertEqual(result.reel_positions, previous_positions)
         self.assertEqual(result.reel_step_counts, (0, 0, 0))
+
+    def test_spin_result_can_defer_no_spin_payout_while_tracking_stack_value(self) -> None:
+        config = make_config(answer_base_values={"good": 1})
+        result = game_module.build_spin_result(
+            config,
+            card_id=42,
+            answer_key="good",
+            bet=Decimal("1.00"),
+            balance_before=Decimal("100.00"),
+            rng=random.Random(2),
+            did_spin_override=False,
+            payout_on_no_spin=False,
+            stack_value_override=Decimal("3.00"),
+        )
+
+        self.assertFalse(result.did_spin)
+        self.assertTrue(result.no_spin)
+        self.assertEqual(result.base_reward, Decimal("1.00"))
+        self.assertEqual(result.stack_value, Decimal("3.00"))
+        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.net_change, Decimal("0.00"))
+        self.assertEqual(result.balance_after, Decimal("100.00"))
 
     def test_spin_result_for_hard_is_neutral_when_configured_to_zero(self) -> None:
         config = make_config(answer_base_values={"hard": 0})
@@ -459,7 +483,8 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.reel_positions, previous_positions)
         self.assertEqual(result.reel_step_counts, (0, 0, 0))
         self.assertEqual(result.base_reward, Decimal("0.50"))
-        self.assertEqual(result.payout, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("0.50"))
+        self.assertEqual(result.net_change, Decimal("0.50"))
         self.assertEqual(
             result.reels,
             game_module.visible_reels_for_positions(config, previous_positions),
