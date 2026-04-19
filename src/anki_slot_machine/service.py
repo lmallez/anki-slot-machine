@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from datetime import datetime
+from dataclasses import dataclass
 from decimal import Decimal
 
 from .config import SlotMachineConfig, load_config
@@ -10,7 +11,7 @@ from .game import (
     RoundSpinResult,
     answer_key_for_rating,
     build_reel_strip,
-    build_round_result,
+    build_round_result_explicit,
     default_reel_positions,
 )
 from .runtime import addon_instance_key, addon_package_name
@@ -27,6 +28,16 @@ MILESTONE_NAMES = (
 REVIEW_BET = Decimal("1")
 HISTORY_FORMAT_VERSION = 2
 TREND_EPSILON = Decimal("0.01")
+
+
+@dataclass(frozen=True)
+class ReviewSettlementPlan:
+    answer_key: str
+    answer_value: Decimal
+    should_settle_stack: bool
+    did_spin: bool
+    base_reward: Decimal
+    stack_value: Decimal
 
 
 def _prepend_capped(items: list, entry, limit: int) -> None:
@@ -50,15 +61,32 @@ def _answer_base_value(config: SlotMachineConfig, answer_key: str) -> Decimal:
     )
 
 
-def _should_trigger_spin(
+def _build_review_settlement_plan(
     *,
-    stacked_value: Decimal,
+    state: SlotMachineState,
     config: SlotMachineConfig,
-    rng: random.Random,
-) -> bool:
-    if stacked_value == Decimal("0"):
-        return False
-    return rng.random() < float(config.spin_trigger_chance)
+    ease: int,
+    button_count: int,
+) -> ReviewSettlementPlan:
+    answer_key = answer_key_for_rating(ease, button_count)
+    answer_value = _answer_base_value(config, answer_key)
+    stacked_value = quantize_decimal(
+        state.pending_stack_value + answer_value,
+        config.decimal_places,
+    )
+    next_trigger_count = state.eligible_reviews_since_spin_check + 1
+    should_settle_stack = next_trigger_count >= config.spin_trigger_every_n
+    did_spin = should_settle_stack
+    base_reward = stacked_value if should_settle_stack else answer_value
+    stack_value = stacked_value
+    return ReviewSettlementPlan(
+        answer_key=answer_key,
+        answer_value=answer_value,
+        should_settle_stack=should_settle_stack,
+        did_spin=did_spin,
+        base_reward=base_reward,
+        stack_value=stack_value,
+    )
 
 
 def _event_decimal(event: dict, field_name: str) -> Decimal:
@@ -185,6 +213,7 @@ def _recent_summary(
     hit_count = 0
     win_total = Decimal("0")
     loss_total = Decimal("0")
+    roll_cost_total = Decimal("0")
     win_events = 0
     loss_events = 0
 
@@ -196,6 +225,7 @@ def _recent_summary(
                     hit_count += 1
 
         net_change = _event_decimal(event, "net_change")
+        roll_cost_total += _event_decimal(event, "roll_cost")
         if net_change > Decimal("0"):
             win_events += 1
             win_total += net_change
@@ -221,6 +251,10 @@ def _recent_summary(
         "hit_count": hit_count,
         "hit_rate": hit_rate,
         "net": format_decimal(total_net, decimal_places),
+        "roll_cost": format_decimal(
+            quantize_decimal(roll_cost_total, decimal_places),
+            decimal_places,
+        ),
         "average_win": format_decimal(average_win, decimal_places),
         "average_loss": format_decimal(average_loss, decimal_places),
         "trend_direction": trend["direction"],
@@ -284,6 +318,7 @@ class SlotMachineService:
             "can_undo": bool(state.review_undo_stack and state.review_undo_stack[0]),
             "machines": machine_payload,
             "spin_animation_duration_ms": config.spin_animation_duration_ms,
+            "roll_cost": format_decimal(config.roll_cost, config.decimal_places),
             "spin_trigger_every_n": config.spin_trigger_every_n,
             "eligible_reviews_since_spin_check": (
                 state.eligible_reviews_since_spin_check
@@ -291,6 +326,10 @@ class SlotMachineService:
             "stealth_mode_enabled": config.stealth_mode_enabled,
             "pending_stack_value": format_decimal(
                 state.pending_stack_value,
+                config.decimal_places,
+            ),
+            "pending_roll_cost": format_decimal(
+                state.pending_roll_cost,
                 config.decimal_places,
             ),
             "card_id": card_id,
@@ -313,55 +352,71 @@ class SlotMachineService:
         }
         previous_trigger_count = state.eligible_reviews_since_spin_check
         previous_pending_stack_value = state.pending_stack_value
+        previous_pending_roll_cost = state.pending_roll_cost
+        previous_pending_roll_cost_by_machine = dict(state.pending_roll_cost_by_machine)
         bet = quantize_decimal(REVIEW_BET, config.decimal_places)
-        answer_key = answer_key_for_rating(ease, button_count)
-        answer_value = _answer_base_value(config, answer_key)
-        stacked_value = quantize_decimal(
-            state.pending_stack_value + answer_value,
-            config.decimal_places,
+        settlement = _build_review_settlement_plan(
+            state=state,
+            config=config,
+            ease=ease,
+            button_count=button_count,
         )
         next_trigger_count = state.eligible_reviews_since_spin_check + 1
-        should_settle_stack = next_trigger_count >= config.spin_trigger_every_n
 
         if not config.machines:
-            return build_round_result(
+            return build_round_result_explicit(
                 config,
                 card_id=card_id,
-                answer_key=answer_key,
+                answer_key=settlement.answer_key,
                 bet=bet,
                 balance_before=state.balance,
+                did_spin=settlement.did_spin,
+                base_reward=settlement.base_reward,
+                stack_value=settlement.stack_value,
+                roll_cost=config.roll_cost,
+                pending_roll_cost=state.pending_roll_cost,
                 rng=self._rng,
-                base_reward_override=(
-                    stacked_value if should_settle_stack else answer_value
-                ),
                 payout_on_no_spin=False,
-                stack_value_override=stacked_value,
             )
         today = datetime.now().astimezone().date().isoformat()
-        did_spin = (
-            _should_trigger_spin(
-                stacked_value=stacked_value,
-                config=config,
-                rng=self._rng,
-            )
-            if should_settle_stack
-            else False
-        )
-        result = build_round_result(
+        result = build_round_result_explicit(
             config,
             card_id=card_id,
-            answer_key=answer_key,
+            answer_key=settlement.answer_key,
             bet=bet,
             balance_before=state.balance,
+            did_spin=settlement.did_spin,
+            base_reward=settlement.base_reward,
+            stack_value=settlement.stack_value,
+            roll_cost=config.roll_cost,
+            pending_roll_cost=state.pending_roll_cost,
             rng=self._rng,
             previous_reel_positions_by_machine=state.reel_positions,
-            did_spin_override=did_spin,
-            base_reward_override=stacked_value if should_settle_stack else answer_value,
+            pending_roll_cost_by_machine=state.pending_roll_cost_by_machine,
             payout_on_no_spin=False,
-            stack_value_override=stacked_value,
         )
-        next_trigger_count = 0 if did_spin else next_trigger_count
-        next_pending_stack_value = Decimal("0") if did_spin else stacked_value
+        event_pending_roll_cost = quantize_decimal(
+            state.pending_roll_cost + result.roll_cost,
+            config.decimal_places,
+        )
+        next_trigger_count = 0 if settlement.did_spin else next_trigger_count
+        next_pending_stack_value = (
+            Decimal("0") if settlement.did_spin else settlement.stack_value
+        )
+        next_pending_roll_cost = (
+            Decimal("0") if settlement.did_spin else event_pending_roll_cost
+        )
+        next_pending_roll_cost_by_machine = (
+            {}
+            if settlement.did_spin
+            else {
+                str(machine_result.get("machine_key", "")): Decimal(
+                    str(machine_result.get("pending_roll_cost", "0"))
+                )
+                for machine_result in result.machine_results
+                if str(machine_result.get("machine_key", "")).strip()
+            }
+        )
         dropped_history_event = (
             state.history[config.history_limit - 1]
             if len(state.history) >= config.history_limit
@@ -400,13 +455,23 @@ class SlotMachineService:
         )
         if previous_pending_stack_value != next_pending_stack_value:
             is_undoable = True
+        if previous_pending_roll_cost != next_pending_roll_cost:
+            is_undoable = True
+        if previous_pending_roll_cost_by_machine != next_pending_roll_cost_by_machine:
+            is_undoable = True
         serialized_result = result.to_dict(config.decimal_places)
+        serialized_result["pending_roll_cost"] = format_decimal(
+            event_pending_roll_cost,
+            config.decimal_places,
+        )
         serialized_result["history_format_version"] = HISTORY_FORMAT_VERSION
         serialized_result["slot_instance_key"] = addon_instance_key()
         serialized_result["slot_instance_label"] = addon_package_name()
         state.reel_positions = next_reel_positions
         state.eligible_reviews_since_spin_check = next_trigger_count
         state.pending_stack_value = next_pending_stack_value
+        state.pending_roll_cost = next_pending_roll_cost
+        state.pending_roll_cost_by_machine = next_pending_roll_cost_by_machine
         state.last_result = serialized_result
 
         if is_undoable:
@@ -491,6 +556,7 @@ class SlotMachineService:
         loss_events = 0
         win_total = Decimal("0")
         loss_total = Decimal("0")
+        total_roll_cost = Decimal("0")
         best_win = Decimal("0")
         worst_loss = Decimal("0")
 
@@ -519,6 +585,7 @@ class SlotMachineService:
                         positive_spins += 1
 
             net_change = Decimal(str(event.get("net_change", "0")))
+            total_roll_cost += Decimal(str(event.get("roll_cost", "0")))
             if net_change > Decimal("0"):
                 win_events += 1
                 win_total += net_change
@@ -559,6 +626,14 @@ class SlotMachineService:
             config.decimal_places,
         )
         recent_100_net = quantize_decimal(recent_net, config.decimal_places)
+        lifetime_roll_cost = quantize_decimal(total_roll_cost, config.decimal_places)
+        recent_100_roll_cost = quantize_decimal(
+            sum(
+                (Decimal(str(event.get("roll_cost", "0"))) for event in recent_window),
+                Decimal("0"),
+            ),
+            config.decimal_places,
+        )
         recent_100_spin_win_rate = (
             round((recent_positive_spins / recent_spin_count) * 100, 1)
             if recent_spin_count
@@ -605,6 +680,10 @@ class SlotMachineService:
             "total_won": format_decimal(state.total_won, config.decimal_places),
             "total_lost": format_decimal(state.total_lost, config.decimal_places),
             "lifetime_net": format_decimal(lifetime_net, config.decimal_places),
+            "lifetime_roll_cost": format_decimal(
+                lifetime_roll_cost,
+                config.decimal_places,
+            ),
             "spins": state.spins,
             "current_streak": state.current_streak,
             "streak_context": _streak_context(state.current_streak),
@@ -625,6 +704,10 @@ class SlotMachineService:
             "best_win": format_decimal(best_win, config.decimal_places),
             "worst_loss": format_decimal(worst_loss, config.decimal_places),
             "recent_100_net": format_decimal(recent_100_net, config.decimal_places),
+            "recent_100_roll_cost": format_decimal(
+                recent_100_roll_cost,
+                config.decimal_places,
+            ),
             "recent_100_spin_win_rate": recent_100_spin_win_rate,
             "recent_10": recent_10_summary,
             "recent_50": recent_50_summary,

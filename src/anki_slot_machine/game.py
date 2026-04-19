@@ -27,6 +27,8 @@ class SpinResult:
     answer_key: str
     answer_label: str
     bet: Decimal
+    roll_cost: Decimal
+    pending_roll_cost: Decimal
     payout: Decimal
     base_reward: Decimal
     stack_value: Decimal
@@ -56,6 +58,8 @@ class SpinResult:
             "answer_key": self.answer_key,
             "answer_label": self.answer_label,
             "bet": format_decimal(self.bet, decimal_places),
+            "roll_cost": format_decimal(self.roll_cost, decimal_places),
+            "pending_roll_cost": format_decimal(self.pending_roll_cost, decimal_places),
             "payout": format_decimal(self.payout, decimal_places),
             "base_reward": format_decimal(self.base_reward, decimal_places),
             "stack_value": format_decimal(self.stack_value, decimal_places),
@@ -90,6 +94,8 @@ class RoundSpinResult:
     answer_key: str
     answer_label: str
     bet: Decimal
+    roll_cost: Decimal
+    pending_roll_cost: Decimal
     payout: Decimal
     base_reward: Decimal
     stack_value: Decimal
@@ -118,6 +124,8 @@ class RoundSpinResult:
             "answer_key": self.answer_key,
             "answer_label": self.answer_label,
             "bet": format_decimal(self.bet, decimal_places),
+            "roll_cost": format_decimal(self.roll_cost, decimal_places),
+            "pending_roll_cost": format_decimal(self.pending_roll_cost, decimal_places),
             "payout": format_decimal(self.payout, decimal_places),
             "base_reward": format_decimal(self.base_reward, decimal_places),
             "stack_value": format_decimal(self.stack_value, decimal_places),
@@ -457,6 +465,18 @@ def _clamp_negative_change(change: Decimal, *, balance_before: Decimal) -> Decim
     return max(-balance_before, change)
 
 
+def _effective_roll_cost(
+    configured_roll_cost: Decimal,
+    *,
+    balance_before: Decimal,
+    decimal_places: int,
+) -> Decimal:
+    roll_cost = quantize_decimal(configured_roll_cost, decimal_places)
+    if roll_cost <= ZERO:
+        return roll_cost
+    return quantize_decimal(min(balance_before, roll_cost), decimal_places)
+
+
 def _configured_base_value(
     config: SlotMachineConfig | SlotMachineDefinition,
     *,
@@ -477,39 +497,24 @@ def _configured_base_value(
     )
 
 
-def build_spin_result(
+def build_spin_result_explicit(
     config: SlotMachineConfig | SlotMachineDefinition,
     *,
     card_id: int,
     answer_key: str,
     bet: Decimal,
     balance_before: Decimal,
+    did_spin: bool,
+    base_reward: Decimal,
+    stack_value: Decimal,
+    roll_cost: Decimal = ZERO,
+    pending_roll_cost: Decimal = ZERO,
     rng: random.Random,
     previous_reel_positions: tuple[int, int, int] | list[int] | None = None,
-    did_spin_override: bool | None = None,
-    base_reward_override: Decimal | None = None,
     payout_on_no_spin: bool = True,
-    stack_value_override: Decimal | None = None,
 ) -> SpinResult:
-    configured_base_reward = quantize_decimal(
-        (
-            base_reward_override
-            if base_reward_override is not None
-            else _configured_base_value(
-                config,
-                answer_key=answer_key,
-                bet=bet,
-            )
-        ),
-        config.decimal_places,
-    )
-    did_spin = (
-        bool(did_spin_override)
-        if did_spin_override is not None
-        else configured_base_reward != ZERO
-    )
-    if configured_base_reward == ZERO:
-        did_spin = False
+    base_reward = quantize_decimal(base_reward, config.decimal_places)
+    stack_value = quantize_decimal(stack_value, config.decimal_places)
     no_spin = not did_spin
     strip = build_reel_strip(config)
     reel_start_positions = normalize_reel_positions(config, previous_reel_positions)
@@ -519,14 +524,13 @@ def build_spin_result(
     slot_multiplier = ZERO
     payout = ZERO
     line_hit = False
-    base_reward = configured_base_reward
-    stack_value = quantize_decimal(
-        stack_value_override if stack_value_override is not None else base_reward,
-        config.decimal_places,
-    )
     slot_bonus = ZERO
     matched_symbol = None
     match_count = 0
+    balance_after_cost = quantize_decimal(
+        balance_before - roll_cost,
+        config.decimal_places,
+    )
     if did_spin:
         reel_positions = spin_reel_positions(config, rng=rng)
         reels = visible_reels_for_positions(config, reel_positions)
@@ -553,7 +557,7 @@ def build_spin_result(
         raw_change = base_reward if payout_on_no_spin else ZERO
 
     payout = quantize_decimal(
-        _clamp_negative_change(raw_change, balance_before=balance_before),
+        _clamp_negative_change(raw_change, balance_before=balance_after_cost),
         config.decimal_places,
     )
     slot_bonus = (
@@ -564,7 +568,10 @@ def build_spin_result(
         if did_spin
         else ZERO
     )
-    net_change = payout
+    net_change = quantize_decimal(
+        payout - roll_cost,
+        config.decimal_places,
+    )
     if did_spin and matched_symbol and match_count == 3:
         headline = (
             f"{ANSWER_LABELS[answer_key]} hits {_headline_symbol(matched_symbol)} "
@@ -604,6 +611,8 @@ def build_spin_result(
         answer_key=answer_key,
         answer_label=ANSWER_LABELS[answer_key],
         bet=bet,
+        roll_cost=roll_cost,
+        pending_roll_cost=pending_roll_cost,
         payout=payout,
         base_reward=base_reward,
         stack_value=stack_value,
@@ -627,21 +636,84 @@ def build_spin_result(
     )
 
 
-def build_round_result(
+def build_spin_result(
+    config: SlotMachineConfig | SlotMachineDefinition,
+    *,
+    card_id: int,
+    answer_key: str,
+    bet: Decimal,
+    balance_before: Decimal,
+    roll_cost: Decimal = ZERO,
+    pending_roll_cost: Decimal = ZERO,
+    rng: random.Random,
+    previous_reel_positions: tuple[int, int, int] | list[int] | None = None,
+    did_spin_override: bool | None = None,
+    base_reward_override: Decimal | None = None,
+    payout_on_no_spin: bool = True,
+    stack_value_override: Decimal | None = None,
+) -> SpinResult:
+    configured_base_reward = quantize_decimal(
+        (
+            base_reward_override
+            if base_reward_override is not None
+            else _configured_base_value(
+                config,
+                answer_key=answer_key,
+                bet=bet,
+            )
+        ),
+        config.decimal_places,
+    )
+    did_spin = (
+        bool(did_spin_override)
+        if did_spin_override is not None
+        else configured_base_reward != ZERO
+    )
+    if configured_base_reward == ZERO and did_spin_override is None:
+        did_spin = False
+    stack_value = quantize_decimal(
+        (
+            stack_value_override
+            if stack_value_override is not None
+            else configured_base_reward
+        ),
+        config.decimal_places,
+    )
+    return build_spin_result_explicit(
+        config,
+        card_id=card_id,
+        answer_key=answer_key,
+        bet=bet,
+        balance_before=balance_before,
+        did_spin=did_spin,
+        base_reward=configured_base_reward,
+        stack_value=stack_value,
+        roll_cost=roll_cost,
+        pending_roll_cost=pending_roll_cost,
+        rng=rng,
+        previous_reel_positions=previous_reel_positions,
+        payout_on_no_spin=payout_on_no_spin,
+    )
+
+
+def build_round_result_explicit(
     config: SlotMachineConfig,
     *,
     card_id: int,
     answer_key: str,
     bet: Decimal,
     balance_before: Decimal,
+    did_spin: bool,
+    base_reward: Decimal,
+    stack_value: Decimal,
+    roll_cost: Decimal = ZERO,
+    pending_roll_cost: Decimal = ZERO,
     rng: random.Random,
     previous_reel_positions_by_machine: (
         dict[str, tuple[int, int, int] | list[int]] | None
     ) = None,
-    did_spin_override: bool | None = None,
-    base_reward_override: Decimal | None = None,
+    pending_roll_cost_by_machine: dict[str, Decimal] | None = None,
     payout_on_no_spin: bool = True,
-    stack_value_override: Decimal | None = None,
 ) -> RoundSpinResult:
     running_balance = quantize_decimal(balance_before, config.decimal_places)
     machine_spin_results: list[SpinResult] = []
@@ -655,6 +727,8 @@ def build_round_result(
             answer_key=answer_key,
             answer_label=ANSWER_LABELS[answer_key],
             bet=bet,
+            roll_cost=roll_cost,
+            pending_roll_cost=pending_roll_cost,
             payout=ZERO,
             base_reward=ZERO,
             stack_value=ZERO,
@@ -677,20 +751,32 @@ def build_round_result(
         )
 
     for machine in config.machines:
-        machine_result = build_spin_result(
+        machine_roll_cost = _effective_roll_cost(
+            roll_cost,
+            balance_before=running_balance,
+            decimal_places=config.decimal_places,
+        )
+        machine_pending_roll_cost = quantize_decimal(
+            (pending_roll_cost_by_machine or {}).get(machine.key, ZERO)
+            + machine_roll_cost,
+            config.decimal_places,
+        )
+        machine_result = build_spin_result_explicit(
             machine,
             card_id=card_id,
             answer_key=answer_key,
             bet=bet,
             balance_before=running_balance,
+            did_spin=did_spin,
+            base_reward=base_reward,
+            stack_value=stack_value,
+            roll_cost=machine_roll_cost,
+            pending_roll_cost=machine_pending_roll_cost,
             rng=rng,
             previous_reel_positions=(previous_reel_positions_by_machine or {}).get(
                 machine.key
             ),
-            did_spin_override=did_spin_override,
-            base_reward_override=base_reward_override,
             payout_on_no_spin=payout_on_no_spin,
-            stack_value_override=stack_value_override,
         )
         machine_spin_results.append(machine_result)
         running_balance = machine_result.balance_after
@@ -699,11 +785,19 @@ def build_round_result(
         sum((result.payout for result in machine_spin_results), ZERO),
         config.decimal_places,
     )
-    base_reward = quantize_decimal(
+    round_roll_cost = quantize_decimal(
+        sum((result.roll_cost for result in machine_spin_results), ZERO),
+        config.decimal_places,
+    )
+    round_pending_roll_cost = quantize_decimal(
+        pending_roll_cost + round_roll_cost,
+        config.decimal_places,
+    )
+    round_base_reward = quantize_decimal(
         sum((result.base_reward for result in machine_spin_results), ZERO),
         config.decimal_places,
     )
-    stack_value = quantize_decimal(
+    round_stack_value = quantize_decimal(
         sum((result.stack_value for result in machine_spin_results), ZERO),
         config.decimal_places,
     )
@@ -765,7 +859,7 @@ def build_round_result(
                 f"{machine_count} machines"
             )
 
-    did_spin = any(result.did_spin for result in machine_spin_results)
+    round_did_spin = any(result.did_spin for result in machine_spin_results)
     no_spin = all(result.no_spin for result in machine_spin_results)
 
     return RoundSpinResult(
@@ -775,15 +869,17 @@ def build_round_result(
         answer_key=answer_key,
         answer_label=ANSWER_LABELS[answer_key],
         bet=bet,
+        roll_cost=round_roll_cost,
+        pending_roll_cost=round_pending_roll_cost,
         payout=payout,
-        base_reward=base_reward,
-        stack_value=stack_value,
+        base_reward=round_base_reward,
+        stack_value=round_stack_value,
         slot_bonus=slot_bonus,
         net_change=net_change,
         balance_after=running_balance,
         reels=reels,
         is_win=net_change > ZERO,
-        did_spin=did_spin,
+        did_spin=round_did_spin,
         no_spin=no_spin,
         line_hit=line_hit,
         slot_multiplier=slot_multiplier,
@@ -791,7 +887,67 @@ def build_round_result(
         reel_start_positions=reel_start_positions,
         reel_positions=reel_positions,
         reel_step_counts=reel_step_counts,
-        animation_enabled=did_spin,
+        animation_enabled=round_did_spin,
         headline=headline,
         machine_results=machine_results,
+    )
+
+
+def build_round_result(
+    config: SlotMachineConfig,
+    *,
+    card_id: int,
+    answer_key: str,
+    bet: Decimal,
+    balance_before: Decimal,
+    roll_cost: Decimal = ZERO,
+    pending_roll_cost: Decimal = ZERO,
+    rng: random.Random,
+    previous_reel_positions_by_machine: (
+        dict[str, tuple[int, int, int] | list[int]] | None
+    ) = None,
+    pending_roll_cost_by_machine: dict[str, Decimal] | None = None,
+    did_spin_override: bool | None = None,
+    base_reward_override: Decimal | None = None,
+    payout_on_no_spin: bool = True,
+    stack_value_override: Decimal | None = None,
+) -> RoundSpinResult:
+    base_reward = quantize_decimal(
+        (
+            base_reward_override
+            if base_reward_override is not None
+            else _configured_base_value(
+                config,
+                answer_key=answer_key,
+                bet=bet,
+            )
+        ),
+        config.decimal_places,
+    )
+    did_spin = (
+        bool(did_spin_override)
+        if did_spin_override is not None
+        else base_reward != ZERO
+    )
+    if base_reward == ZERO and did_spin_override is None:
+        did_spin = False
+    stack_value = quantize_decimal(
+        stack_value_override if stack_value_override is not None else base_reward,
+        config.decimal_places,
+    )
+    return build_round_result_explicit(
+        config,
+        card_id=card_id,
+        answer_key=answer_key,
+        bet=bet,
+        balance_before=balance_before,
+        did_spin=did_spin,
+        base_reward=base_reward,
+        stack_value=stack_value,
+        roll_cost=roll_cost,
+        pending_roll_cost=pending_roll_cost,
+        rng=rng,
+        previous_reel_positions_by_machine=previous_reel_positions_by_machine,
+        pending_roll_cost_by_machine=pending_roll_cost_by_machine,
+        payout_on_no_spin=payout_on_no_spin,
     )

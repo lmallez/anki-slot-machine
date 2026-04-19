@@ -86,6 +86,12 @@ class SlotMachineOddsDialog(QDialog):
                 "Spin trigger: all answers build one shared stack; the Nth review settles "
                 "that stack and may turn the settlement into a spin."
             ),
+            (
+                "Roll cost: "
+                f"${format_decimal(config.roll_cost, config.decimal_places)} per visible machine "
+                "on each review, tracked separately from the shared stack and "
+                "not included in the odds table."
+            ),
         ]
 
         odds_lines = []

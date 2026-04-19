@@ -46,8 +46,8 @@ DEFAULT_MILESTONE_THRESHOLDS = (250, 500, 1000, 2500)
 DEFAULT_DECIMAL_PLACES = 2
 DEFAULT_SPIN_ANIMATION_DURATION_MS = 750
 DEFAULT_SPIN_TRIGGER_EVERY_N = 1
-DEFAULT_SPIN_TRIGGER_CHANCE = Decimal("1")
 DEFAULT_STEALTH_MODE_ENABLED = False
+DEFAULT_ROLL_COST = Decimal("1")
 DEFAULT_ANSWER_BASE_VALUES = {
     "again": Decimal("0"),
     "hard": Decimal("0.5"),
@@ -66,6 +66,7 @@ class SlotMachineDefinition:
     slot_faces: dict[str, int]
     slot_double_multipliers: dict[str, Decimal]
     slot_triple_multipliers: dict[str, Decimal]
+    roll_cost: Decimal
     answer_base_values: dict[str, Decimal]
     slot_probability_summary: "SlotProbabilitySummary"
 
@@ -107,11 +108,11 @@ class SlotMachineConfig:
     slot_faces: dict[str, int]
     slot_double_multipliers: dict[str, Decimal]
     slot_triple_multipliers: dict[str, Decimal]
+    roll_cost: Decimal
     answer_base_values: dict[str, Decimal]
     slot_probability_summary: SlotProbabilitySummary
     spin_animation_duration_ms: int
     spin_trigger_every_n: int
-    spin_trigger_chance: Decimal
     stealth_mode_enabled: bool
     history_limit: int
     milestone_thresholds: tuple[int, ...]
@@ -166,21 +167,19 @@ def _spin_trigger_every_n(raw_value) -> int:
     return max(1, value)
 
 
-def _spin_trigger_chance(raw_value) -> Decimal:
-    value = to_decimal(raw_value, DEFAULT_SPIN_TRIGGER_CHANCE)
-    if value < ZERO:
-        return ZERO
-    if value > ONE:
-        return ONE
-    return value
-
-
 def _stealth_mode_enabled(raw_value) -> bool:
     if isinstance(raw_value, bool):
         return raw_value
     if raw_value is None:
         return DEFAULT_STEALTH_MODE_ENABLED
     return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _roll_cost(raw_value, *, decimal_places: int) -> Decimal:
+    return quantize_decimal(
+        to_decimal(raw_value, DEFAULT_ROLL_COST),
+        decimal_places,
+    )
 
 
 def _default_machine_label(profile_name: str, index: int) -> str:
@@ -400,6 +399,7 @@ def _build_machine_definition(
     slot_faces: dict[str, int],
     slot_double_multipliers: dict[str, Decimal],
     slot_triple_multipliers: dict[str, Decimal],
+    roll_cost: Decimal,
     answer_base_values: dict[str, Decimal],
     probability_summary: SlotProbabilitySummary,
     used_keys: set[str],
@@ -422,6 +422,7 @@ def _build_machine_definition(
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
+        roll_cost=roll_cost,
         answer_base_values=answer_base_values,
         slot_probability_summary=probability_summary,
     )
@@ -468,6 +469,10 @@ def config_from_raw(
         symbols=symbols,
         decimal_places=decimal_places,
     )
+    roll_cost = _roll_cost(
+        raw.get("roll_cost"),
+        decimal_places=decimal_places,
+    )
     answer_base_values = _load_answer_base_values(
         raw.get("answer_base_values"),
         decimal_places=decimal_places,
@@ -493,6 +498,7 @@ def config_from_raw(
             slot_faces=slot_faces,
             slot_double_multipliers=slot_double_multipliers,
             slot_triple_multipliers=slot_triple_multipliers,
+            roll_cost=roll_cost,
             answer_base_values=answer_base_values,
             probability_summary=probability_summary,
             used_keys=used_keys,
@@ -516,13 +522,13 @@ def config_from_raw(
         slot_faces=slot_faces,
         slot_double_multipliers=slot_double_multipliers,
         slot_triple_multipliers=slot_triple_multipliers,
+        roll_cost=roll_cost,
         answer_base_values=answer_base_values,
         slot_probability_summary=probability_summary,
         spin_animation_duration_ms=_spin_animation_duration_ms(
             raw.get("spin_animation_duration_ms")
         ),
         spin_trigger_every_n=_spin_trigger_every_n(raw.get("spin_trigger_every_n")),
-        spin_trigger_chance=_spin_trigger_chance(raw.get("spin_trigger_chance")),
         stealth_mode_enabled=_stealth_mode_enabled(raw.get("stealth_mode_enabled")),
         history_limit=DEFAULT_HISTORY_LIMIT,
         milestone_thresholds=DEFAULT_MILESTONE_THRESHOLDS,

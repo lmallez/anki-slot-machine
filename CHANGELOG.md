@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.11] - 2026-04-19
+
+### Added
+
+- Added `roll_cost` with a matching Quick Settings control.
+- Added roll-flow reporting in stats.
+- Added clearer per-review cost feedback in the slot UI.
+
+### Changed
+
+- Changed stacked settlements so every `spin_trigger_every_n` review now
+  settles immediately into a spin instead of using a separate chance check.
+- Changed threshold behavior so zero-value and negative stacked reviews still
+  use the same deterministic settlement flow when they reach the trigger.
+- Updated Stealth Mode feedback with cleaner collapsed progress text and hidden
+  per-review cost cues.
+
+### Removed
+
+- Removed `spin_trigger_chance` from config parsing, settings UI, and user
+  docs.
+- Removed the chance slider from Quick Settings, so spin cadence is now
+  controlled only by `spin_trigger_every_n`.
+
+### Fixed
+
+- Fixed post-spin amount popups so the large notification now shows the raw
+  spin payout while the status text continues to explain the overall net after
+  roll cost.
+
 ## [v0.0.10] - 2026-04-15
 
 ### Added

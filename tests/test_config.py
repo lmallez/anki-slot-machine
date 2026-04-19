@@ -96,6 +96,19 @@ class ConfigProfileTests(unittest.TestCase):
         self.assertEqual(config.machines[1].slot_profile_name, "shared_floor")
         self.assertEqual(config.machines[1].slot_double_multipliers["SLOT_5"], Decimal("9.75"))
 
+    def test_roll_cost_defaults_and_preserves_signed_values(self) -> None:
+        default_config = load_test_config()
+        self.assertEqual(default_config.roll_cost, Decimal("1.00"))
+        self.assertEqual(default_config.machines[0].roll_cost, Decimal("1.00"))
+        self.assertEqual(default_config.answer_base_values["again"], Decimal("0.00"))
+
+        configured = load_test_config(roll_cost=2.345)
+        self.assertEqual(configured.roll_cost, Decimal("2.35"))
+
+        credited = load_test_config(roll_cost=-5)
+        self.assertEqual(credited.roll_cost, Decimal("-5.00"))
+        self.assertEqual(credited.machines[0].roll_cost, Decimal("-5.00"))
+
     def test_probabilities_match_slot_faces(self) -> None:
         config = load_test_config(
             profile_overrides={
@@ -217,18 +230,10 @@ class ConfigProfileTests(unittest.TestCase):
     def test_spin_trigger_defaults_and_clamping(self) -> None:
         default_config = load_test_config()
         self.assertEqual(default_config.spin_trigger_every_n, 1)
-        self.assertEqual(default_config.spin_trigger_chance, Decimal("1"))
         self.assertFalse(default_config.stealth_mode_enabled)
 
-        clamped_config = load_test_config(
-            spin_trigger_every_n=0,
-            spin_trigger_chance=9,
-        )
+        clamped_config = load_test_config(spin_trigger_every_n=0)
         self.assertEqual(clamped_config.spin_trigger_every_n, 1)
-        self.assertEqual(clamped_config.spin_trigger_chance, Decimal("1"))
-
-        low_chance_config = load_test_config(spin_trigger_chance=-1)
-        self.assertEqual(low_chance_config.spin_trigger_chance, Decimal("0"))
 
     def test_stealth_mode_settings_are_loaded(self) -> None:
         self.assertTrue(load_test_config(stealth_mode_enabled=True).stealth_mode_enabled)

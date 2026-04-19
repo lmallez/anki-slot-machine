@@ -17,6 +17,8 @@ class SettingsDialogTests(unittest.TestCase):
         updated = build_settings_config(
             {
                 "starting_balance": 250,
+                "roll_cost": 1,
+                "spin_trigger_chance": 0.25,
                 "answer_base_values": {
                     "again": 0,
                     "hard": 0.5,
@@ -25,20 +27,21 @@ class SettingsDialogTests(unittest.TestCase):
                 },
                 "machines": [{"key": "main", "label": "Slot 1"}],
             },
+            roll_cost=1.5,
             answer_base_values={
                 "again": -1.0,
                 "hard": 0.25,
                 "good": 2.0,
                 "easy": 3.0,
             },
-            spin_trigger_chance=0.4,
             spin_trigger_every_n=3,
             stealth_mode_enabled=True,
         )
 
         self.assertEqual(updated["starting_balance"], 250)
+        self.assertEqual(updated["roll_cost"], 1.5)
         self.assertEqual(updated["machines"], [{"key": "main", "label": "Slot 1"}])
-        self.assertEqual(updated["spin_trigger_chance"], 0.4)
+        self.assertNotIn("spin_trigger_chance", updated)
         self.assertEqual(updated["spin_trigger_every_n"], 3)
         self.assertTrue(updated["stealth_mode_enabled"])
         self.assertEqual(
@@ -57,7 +60,7 @@ class SettingsDialogTests(unittest.TestCase):
         raw_config = {
             "starting_balance": 100,
             "decimal_places": 2,
-            "spin_trigger_chance": 0.75,
+            "roll_cost": 1.25,
             "spin_trigger_every_n": 4,
             "stealth_mode_enabled": True,
             "answer_base_values": {
@@ -74,11 +77,11 @@ class SettingsDialogTests(unittest.TestCase):
         ):
             dialog = SlotMachineSettingsDialog()
 
+        self.assertEqual(dialog.roll_cost_input.value(), 1.25)
         self.assertEqual(dialog.again_input.value(), -1.0)
         self.assertEqual(dialog.hard_input.value(), 0.25)
         self.assertEqual(dialog.good_input.value(), 1.75)
         self.assertEqual(dialog.easy_input.value(), 2.5)
-        self.assertEqual(dialog.spin_trigger_chance_input.value(), 0.75)
         self.assertEqual(dialog.spin_trigger_every_n_input.value(), 4)
         self.assertTrue(dialog.stealth_mode_enabled_input.isChecked())
 
@@ -88,7 +91,7 @@ class SettingsDialogTests(unittest.TestCase):
         raw_config = {
             "starting_balance": 100,
             "decimal_places": 2,
-            "spin_trigger_chance": 1.0,
+            "roll_cost": 1.0,
             "spin_trigger_every_n": 1,
             "stealth_mode_enabled": False,
             "answer_base_values": {
@@ -108,9 +111,9 @@ class SettingsDialogTests(unittest.TestCase):
             "anki_slot_machine.reviewer.refresh_active_reviewer"
         ) as refresh_reviewer:
             dialog = SlotMachineSettingsDialog()
+            dialog.roll_cost_input.setValue(2.0)
             dialog.good_input.setValue(2.25)
             dialog.easy_input.setValue(3.5)
-            dialog.spin_trigger_chance_input.setValue(0.6)
             dialog.spin_trigger_every_n_input.setValue(5)
             dialog.stealth_mode_enabled_input.setChecked(True)
 
@@ -118,9 +121,10 @@ class SettingsDialogTests(unittest.TestCase):
 
         write_config.assert_called_once()
         saved_config = write_config.call_args.args[0]
+        self.assertEqual(saved_config["roll_cost"], 2.0)
         self.assertEqual(saved_config["answer_base_values"]["good"], 2.25)
         self.assertEqual(saved_config["answer_base_values"]["easy"], 3.5)
-        self.assertEqual(saved_config["spin_trigger_chance"], 0.6)
+        self.assertNotIn("spin_trigger_chance", saved_config)
         self.assertEqual(saved_config["spin_trigger_every_n"], 5)
         self.assertTrue(saved_config["stealth_mode_enabled"])
         refresh_reviewer.assert_called_once_with(suppress_animation=True)

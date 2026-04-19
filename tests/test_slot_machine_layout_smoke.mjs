@@ -556,7 +556,7 @@ instance.syncState({
 
 assert.equal(alphaRoot.hidden, false);
 assert.equal(betaRoot.hidden, false);
-assert.equal(expandButton.textContent, "Slots 0/1 0.00$");
+assert.equal(expandButton.textContent, "Slots");
 
 instance.syncState({
   balance: "107.08",
@@ -606,6 +606,121 @@ assert.equal(alphaRoot.hidden, true);
 assert.equal(betaRoot.hidden, true);
 assert.equal(alphaRoot.style.left, "40px");
 assert.equal(betaRoot.style.left, "80px");
+
+instance.syncState({
+  balance: "107.08",
+  card_id: 321,
+  stealth_mode_enabled: true,
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+    { key: "gamma", label: "Gamma" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+    gamma: { left: 120, top: 130, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-stealth-hide",
+    machine_results: [
+      {
+        event_id: "evt-stealth-hide",
+        machine_key: "alpha",
+        answer_key: "hard",
+        payout: "0.50",
+        net_change: "0.50",
+        base_reward: "0.50",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: false,
+      },
+      {
+        event_id: "evt-stealth-hide",
+        machine_key: "beta",
+        answer_key: "again",
+        payout: "0.00",
+        net_change: "0.00",
+        base_reward: "0.00",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+      },
+    ],
+  },
+});
+
+const gammaRoot = document.body.children[3];
+assert.equal(alphaRoot.hidden, true);
+assert.equal(betaRoot.hidden, true);
+assert.equal(gammaRoot.hidden, false);
+assert.equal(gammaRoot.style.left, "120px");
+
+instance.syncState({
+  balance: "107.08",
+  card_id: 322,
+  stealth_mode_enabled: true,
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+    { key: "gamma", label: "Gamma" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+    gamma: { left: 120, top: 130, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-stealth-hide-next-card",
+    machine_results: [
+      {
+        event_id: "evt-stealth-hide-next-card",
+        machine_key: "alpha",
+        answer_key: "hard",
+        payout: "0.50",
+        net_change: "0.50",
+        base_reward: "0.50",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: false,
+      },
+      {
+        event_id: "evt-stealth-hide-next-card",
+        machine_key: "beta",
+        answer_key: "again",
+        payout: "0.00",
+        net_change: "0.00",
+        base_reward: "0.00",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+      },
+      {
+        event_id: "evt-stealth-hide-next-card",
+        machine_key: "gamma",
+        answer_key: "good",
+        payout: "0.00",
+        net_change: "0.00",
+        base_reward: "0.00",
+        slot_multiplier: "0.00",
+        did_spin: false,
+        animation_enabled: false,
+        reels: ["SLOT_1", "SLOT_3", "SLOT_4"],
+        line_hit: false,
+      },
+    ],
+  },
+});
+
+assert.equal(gammaRoot.hidden, true);
 
 instance.syncState({
   balance: "107.08",
@@ -1100,6 +1215,62 @@ assert.equal(alphaBase.textContent, "+$0.50");
 assert.equal(alphaTotal.textContent, "= +$0.48");
 
 instance.syncState({
+  balance: "107.35",
+  machines: [
+    { key: "alpha", label: "Alpha" },
+    { key: "beta", label: "Beta" },
+  ],
+  window_layouts: {
+    alpha: { left: 40, top: 50, width: 300, height: 456, mode: "open" },
+    beta: { left: 80, top: 90, width: 300, height: 456, mode: "open" },
+  },
+  last_result: {
+    event_id: "evt-roll-cost-spin",
+    machine_results: [
+      {
+        event_id: "evt-roll-cost-spin",
+        machine_key: "alpha",
+        answer_key: "good",
+        payout: "7.50",
+        net_change: "6.50",
+        base_reward: "3.00",
+        stack_value: "3.00",
+        roll_cost: "1.00",
+        pending_roll_cost: "3.00",
+        slot_multiplier: "2.50",
+        did_spin: true,
+        animation_enabled: false,
+        reels: ["SLOT_1", "SLOT_1", "SLOT_1"],
+        line_hit: true,
+        matched_symbol: "SLOT_1",
+      },
+      {
+        event_id: "evt-roll-cost-spin",
+        machine_key: "beta",
+        answer_key: "good",
+        payout: "2.85",
+        net_change: "1.85",
+        base_reward: "3.00",
+        stack_value: "3.00",
+        roll_cost: "1.00",
+        pending_roll_cost: "3.00",
+        slot_multiplier: "0.95",
+        did_spin: true,
+        animation_enabled: false,
+        reels: ["SLOT_2", "SLOT_5", "SLOT_2"],
+        line_hit: false,
+        matched_symbol: "SLOT_2",
+      },
+    ],
+  },
+});
+
+assert.equal(alphaStatus.textContent, "Result $7.50 · Roll Cost $3.00\nNet +$4.50");
+assert.equal(betaStatus.textContent, "Result $2.85 · Roll Cost $3.00\nNet -$0.15");
+assert.equal(alphaAmount.textContent, "+$7.50");
+assert.equal(betaAmount.textContent, "+$2.85");
+
+instance.syncState({
   balance: "106.08",
   machines: [
     { key: "alpha", label: "Alpha" },
@@ -1145,11 +1316,9 @@ instance.syncState({
   },
 });
 
-assert.equal(alphaStatus.textContent, "No hit");
+flushAnimationFrame();
+assert.equal(alphaStatus.textContent, "");
 assert.equal(alphaAmount.textContent, "");
-assert.equal(alphaBase.textContent, "$0.00");
-assert.equal(alphaBonus.textContent, "");
-assert.equal(alphaTotal.textContent, "");
 
 instance.syncState({
   balance: "104.10",

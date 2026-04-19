@@ -12,6 +12,8 @@ from .runtime import state_path
 
 DECIMAL_EVENT_FIELDS = (
     "bet",
+    "roll_cost",
+    "pending_roll_cost",
     "payout",
     "base_reward",
     "stack_value",
@@ -26,6 +28,7 @@ DECIMAL_STATE_FIELDS = (
     "total_lost",
     "biggest_jackpot",
     "pending_stack_value",
+    "pending_roll_cost",
 )
 UNDO_FORMAT_VERSION = 1
 UNDO_HISTORY_LIMIT = 20
@@ -125,6 +128,20 @@ def _normalize_daily_earnings(
     }
 
 
+def _normalize_decimal_map(
+    payload: dict | None,
+    *,
+    decimal_places: int,
+) -> dict[str, Decimal]:
+    if not isinstance(payload, dict):
+        return {}
+
+    return {
+        str(key): parse_stored_decimal(value, decimal_places)
+        for key, value in payload.items()
+    }
+
+
 def _normalize_history_payload(
     payload: list | None,
     *,
@@ -184,6 +201,13 @@ def _normalize_state_snapshot_payload(
         0,
         int(payload.get("eligible_reviews_since_spin_check", 0)),
     )
+    normalized["pending_roll_cost_by_machine"] = {
+        key: format_decimal(value, decimal_places)
+        for key, value in _normalize_decimal_map(
+            payload.get("pending_roll_cost_by_machine"),
+            decimal_places=decimal_places,
+        ).items()
+    }
     return normalized
 
 
@@ -236,6 +260,13 @@ def _normalize_undo_record_payload(
         0,
         int(payload.get("eligible_reviews_since_spin_check", 0)),
     )
+    normalized["pending_roll_cost_by_machine"] = {
+        key: format_decimal(value, decimal_places)
+        for key, value in _normalize_decimal_map(
+            payload.get("pending_roll_cost_by_machine"),
+            decimal_places=decimal_places,
+        ).items()
+    }
     normalized["dropped_history_event"] = _normalize_event_payload(
         payload.get("dropped_history_event"),
         decimal_places=decimal_places,
@@ -313,6 +344,8 @@ class SlotMachineState:
     reel_positions: dict[str, list[int]] = field(default_factory=dict)
     eligible_reviews_since_spin_check: int = 0
     pending_stack_value: Decimal = Decimal("0")
+    pending_roll_cost: Decimal = Decimal("0")
+    pending_roll_cost_by_machine: dict[str, Decimal] = field(default_factory=dict)
     undo_history: list[dict] = field(default_factory=list)
     review_undo_stack: list[bool] = field(default_factory=list)
 
@@ -385,6 +418,14 @@ class SlotMachineState:
                 data.get("pending_stack_value"),
                 config.decimal_places,
             ),
+            pending_roll_cost=parse_stored_decimal(
+                data.get("pending_roll_cost"),
+                config.decimal_places,
+            ),
+            pending_roll_cost_by_machine=_normalize_decimal_map(
+                data.get("pending_roll_cost_by_machine"),
+                decimal_places=config.decimal_places,
+            ),
             undo_history=undo_history,
             review_undo_stack=review_undo_stack,
         )
@@ -421,6 +462,14 @@ class SlotMachineState:
                 self.pending_stack_value,
                 decimal_places,
             ),
+            "pending_roll_cost": format_decimal(
+                self.pending_roll_cost,
+                decimal_places,
+            ),
+            "pending_roll_cost_by_machine": {
+                key: format_decimal(value, decimal_places)
+                for key, value in self.pending_roll_cost_by_machine.items()
+            },
             "dropped_history_event": copy.deepcopy(dropped_history_event),
         }
 
@@ -445,6 +494,8 @@ class SlotMachineState:
             restored.eligible_reviews_since_spin_check
         )
         self.pending_stack_value = restored.pending_stack_value
+        self.pending_roll_cost = restored.pending_roll_cost
+        self.pending_roll_cost_by_machine = restored.pending_roll_cost_by_machine
         self.undo_history = restored.undo_history
         self.review_undo_stack = restored.review_undo_stack
 
@@ -492,6 +543,14 @@ class SlotMachineState:
             normalized.get("pending_stack_value"),
             config.decimal_places,
         )
+        self.pending_roll_cost = parse_stored_decimal(
+            normalized.get("pending_roll_cost"),
+            config.decimal_places,
+        )
+        self.pending_roll_cost_by_machine = _normalize_decimal_map(
+            normalized.get("pending_roll_cost_by_machine"),
+            decimal_places=config.decimal_places,
+        )
 
         review_day = str(normalized.get("daily_earnings_date") or "").strip()
         had_daily_entry = bool(normalized.get("had_daily_earnings_entry"))
@@ -534,6 +593,14 @@ class SlotMachineState:
                 self.pending_stack_value,
                 decimal_places,
             ),
+            "pending_roll_cost": format_decimal(
+                self.pending_roll_cost,
+                decimal_places,
+            ),
+            "pending_roll_cost_by_machine": {
+                key: format_decimal(value, decimal_places)
+                for key, value in self.pending_roll_cost_by_machine.items()
+            },
             "undo_history": self.undo_history,
             "review_undo_stack": self.review_undo_stack,
         }

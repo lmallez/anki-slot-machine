@@ -8,12 +8,12 @@ changes Anki scheduling, intervals, or note data.
 - `starting_balance`: first balance for a fresh profile state file.
 - `decimal_places`: how many decimals are used for balances, payouts, and
   displayed multipliers.
+- `roll_cost`: charged once per visible machine on each review. Does not
+  change odds or multipliers.
 - `spin_animation_duration_ms`: total reel animation budget in milliseconds,
   clamped between `150` and `750`.
 - `spin_trigger_every_n`: settle the shared stack every `n` reviews. Default is
   `1`.
-- `spin_trigger_chance`: chance to spin when that check happens, from `0.0` to
-  `1.0`. Default is `1.0`.
 - `stealth_mode_enabled`: when `true`, hide slot windows until an actual spin
   occurs, then keep them visible until the next non-spin review.
 - `answer_base_values`: signed base value for each answer button. These values
@@ -30,9 +30,9 @@ Example config:
 {
   "starting_balance": 100,
   "decimal_places": 2,
+  "roll_cost": 1.0,
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
-  "spin_trigger_chance": 1.0,
   "stealth_mode_enabled": false,
   "answer_base_values": {
     "again": 0.0,
@@ -97,15 +97,16 @@ but the configured face counts and resulting probabilities stay the same.
 ## Reward rules
 
 - Every review adds its configured answer value into one shared stack.
+- Every visible machine also applies its own `roll_cost` on each review.
 - `Again`, `Hard`, `Good`, and `Easy` all use the same trigger behavior.
+- `roll_cost` is charged once per visible machine and tracked separately from
+  the shared answer stack.
 - Reviews before the threshold do not change the balance yet; they only build
-  the shared stack.
+  the shared answer stack, except for the immediate `roll_cost` deduction.
 - When the shared review counter reaches `spin_trigger_every_n`, the backend
-  starts checking whether the full stacked value should spin.
-- If `spin_trigger_chance` passes on that settlement, the spin payout becomes
+  settles the full shared answer stack on that review.
+- When that settlement review happens, the spin payout becomes
   `stacked_value x multiplier`.
-- If the chance check fails, the stack stays pending and keeps building until a
-  later review produces an actual spin.
 - Any answer with a configured value of `0` still counts toward the threshold,
   but contributes `0` to the stack.
 - Negative outcomes are clamped so the shared balance never goes below zero.
@@ -125,9 +126,8 @@ Trigger logic:
 
 - Every review increments one shared review counter.
 - Each review also adds its signed configured value into one shared stack.
-- Once the counter reaches `spin_trigger_every_n`, the backend keeps rolling
-  `spin_trigger_chance` against the current stacked amount until a real spin
-  happens.
+- Once the counter reaches `spin_trigger_every_n`, the backend settles the
+  current stacked amount on that review.
 - The counter and stack reset only when an actual spin occurs.
 
 ## How probabilities work

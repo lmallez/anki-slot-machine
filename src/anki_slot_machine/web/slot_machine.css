@@ -120,6 +120,53 @@
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
 }
 
+.anki-slot-machine-control-pill-amount {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  transform: translateX(0);
+  opacity: 0;
+  min-width: 72px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(7, 7, 7, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.anki-slot-machine-control-pill-amount.is-visible {
+  animation: anki-slot-machine-float 760ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.anki-slot-machine-control-pill-amount.is-win {
+  color: var(--win);
+  border-color: rgba(95, 200, 111, 0.55);
+  box-shadow: 0 0 0 1px rgba(95, 200, 111, 0.16) inset, 0 10px 18px rgba(9, 24, 11, 0.35);
+}
+
+.anki-slot-machine-control-pill-amount.is-loss {
+  color: var(--loss);
+  border-color: rgba(211, 91, 86, 0.42);
+  box-shadow: 0 0 0 1px rgba(211, 91, 86, 0.12) inset, 0 10px 18px rgba(27, 10, 10, 0.28);
+}
+
+.anki-slot-machine-control-pill-amount.is-neutral {
+  color: var(--text);
+  border-color: rgba(212, 169, 71, 0.34);
+  box-shadow: 0 0 0 1px rgba(212, 169, 71, 0.1) inset, 0 10px 18px rgba(0, 0, 0, 0.22);
+}
+
+.anki-slot-machine-control-panel:not(.is-collapsed) .anki-slot-machine-control-pill-amount {
+  display: none;
+}
+
 .anki-slot-machine-control-button:disabled {
   cursor: default;
   opacity: 0.45;
@@ -467,18 +514,19 @@
 }
 
 .anki-slot-machine-status {
-  min-height: calc(18px * var(--slot-scale));
+  min-height: calc(32px * var(--slot-scale));
   margin: 0 auto calc(6px * var(--slot-scale));
   color: rgba(242, 242, 237, 0.66);
   text-align: center;
   font-size: calc(12px * var(--slot-scale));
   font-weight: 700;
   letter-spacing: 0.02em;
-  line-height: 1;
+  line-height: 1.2;
   opacity: 0;
   transform: translateY(calc(-4px * var(--slot-scale))) scale(0.98);
   transition: opacity 140ms ease, transform 140ms ease;
   pointer-events: none;
+  white-space: pre-line;
 }
 
 .anki-slot-machine-status.is-visible {

@@ -136,12 +136,14 @@ def _summary_sentence(summary: dict) -> str:
 
     return (
         f"{summary.get('label', 'Recent')}: {_signed_money(str(summary.get('net', '0')))}"
+        f" • roll {_signed_money(str(summary.get('roll_cost', '0')))}"
         f" • {hit_text} • avg win ${summary.get('average_win', '0')}"
     )
 
 
 def _trade_commentary(event: dict) -> str:
     net_change = Decimal(str(event.get("net_change", "0")))
+    roll_cost = Decimal(str(event.get("roll_cost", "0")))
     if _has_multiple_machine_results(event):
         machine_results = _machine_results(event)
         hit_count = sum(1 for result in machine_results if result.get("matched_symbol"))
@@ -167,6 +169,9 @@ def _trade_commentary(event: dict) -> str:
     triple = bool(event.get("line_hit"))
     payout_text = str(event.get("payout", "0"))
 
+    if not bool(event.get("did_spin")) and roll_cost > Decimal("0"):
+        return "funding stack"
+
     if net_change < Decimal("0"):
         if triple:
             return "full liquidation"
@@ -187,17 +192,29 @@ def _trade_commentary(event: dict) -> str:
 
 
 def _calculation_strip(event: dict) -> str:
+    roll_cost = str(event.get("roll_cost", "0"))
+    has_roll_cost = roll_cost not in {"0", "0.0", "0.00"}
     if _has_multiple_machine_results(event):
         base = str(event.get("base_reward", "0"))
         change = _signed_money(str(event.get("net_change", "0")))
+        if has_roll_cost:
+            return f"${base} total · cost ${roll_cost} -> {change}"
         return f"${base} total -> {change}"
 
     answer = str(event.get("answer_key", ""))
     did_spin = bool(event.get("did_spin"))
     if not did_spin:
-        base = event.get("base_reward")
         change = event.get("net_change")
-        if base is None or change is None:
+        stack_value = event.get("stack_value")
+        if change is None or stack_value is None:
+            return ""
+        if has_roll_cost:
+            return (
+                f"cost ${roll_cost} -> {_signed_money(str(change))} "
+                f"· stack ${stack_value}"
+            )
+        base = event.get("base_reward")
+        if base is None:
             return ""
         return f"${base} -> {_signed_money(str(change))}"
 
@@ -208,6 +225,18 @@ def _calculation_strip(event: dict) -> str:
         return ""
 
     base = str(raw_base)
+    if has_roll_cost:
+        payout = str(event.get("payout", "0"))
+        display_roll_cost = roll_cost
+        display_net = str(event.get("net_change", "0"))
+        machine_key = str(event.get("machine_key", "")).strip()
+        pending_roll_cost = str(event.get("pending_roll_cost", "0"))
+        if machine_key and pending_roll_cost not in {"", "0", "0.0", "0.00"}:
+            display_roll_cost = pending_roll_cost
+            display_net = str(Decimal(payout) - Decimal(pending_roll_cost))
+        round_cost = f"${display_roll_cost}"
+        round_net = _signed_money(display_net)
+        return f"result +${payout} · roll cost {round_cost} " f"· net {round_net}"
     multiplier = str(raw_multiplier)
     change = _signed_money(str(raw_change))
     return f"${base} x {multiplier} = {change}"
@@ -288,16 +317,19 @@ def _quant_panel_text(snapshot: dict) -> str:
             "WINDOWS",
             (
                 f"Last 10   {_signed_money(str(recent_10.get('net', '0'))):>9}   "
+                f"roll {_signed_money(str(recent_10.get('roll_cost', '0'))):>9}   "
                 f"{recent_10.get('hit_count', 0)}/{recent_10.get('spin_count', 0)} hits   "
                 f"{recent_10.get('trend_arrow', '→')} {recent_10.get('trend_label', 'steady')}"
             ),
             (
                 f"Last 50   {_signed_money(str(recent_50.get('net', '0'))):>9}   "
+                f"roll {_signed_money(str(recent_50.get('roll_cost', '0'))):>9}   "
                 f"{recent_50.get('hit_count', 0)}/{recent_50.get('spin_count', 0)} hits   "
                 f"{recent_50.get('trend_arrow', '→')} {recent_50.get('trend_label', 'steady')}"
             ),
             (
                 f"Last 100  {_signed_money(str(recent_100.get('net', '0'))):>9}   "
+                f"roll {_signed_money(str(recent_100.get('roll_cost', '0'))):>9}   "
                 f"{recent_100.get('hit_count', 0)}/{recent_100.get('spin_count', 0)} hits   "
                 f"{recent_100.get('trend_arrow', '→')} {recent_100.get('trend_label', 'steady')}"
             ),
@@ -322,6 +354,7 @@ def _quant_panel_text(snapshot: dict) -> str:
             "",
             "TRACKED",
             f"Reviews          {snapshot.get('history_count', 0)}",
+            f"Roll flow        {_signed_money(str(snapshot.get('lifetime_roll_cost', '0')))}",
             f"Lifetime net     {_signed_money(str(snapshot.get('lifetime_net', '0')))}",
         ]
     )

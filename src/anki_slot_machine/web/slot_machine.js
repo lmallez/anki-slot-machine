@@ -40,6 +40,8 @@
   let closeAllConfirmOpen = false;
   let lastSyncedMachineCount = 0;
   let controlPanelCollapsed = true;
+  let controlPanelAmountTimeout = null;
+  let lastControlPanelAmountEventId = null;
   let interaction = null;
   let hasHydratedLayouts = false;
   let windowEventsBound = false;
@@ -204,6 +206,7 @@
       spinDurationMs: 750,
       pendingBreakdownEventId: null,
       hasHydratedLayout: false,
+      revealUntilCardId: null,
     };
 
     machineViews[key] = view;
@@ -229,6 +232,7 @@
         <button class="anki-slot-machine-control-button is-settings" data-slot-panel-settings type="button">Settings</button>
       </div>
       <button class="anki-slot-machine-control-pill" data-slot-panel-expand type="button" hidden>Slots</button>
+      <div class="anki-slot-machine-control-pill-amount" data-slot-panel-expand-amount></div>
     `;
     document.body.appendChild(controlPanel);
 
@@ -244,6 +248,7 @@
       cancelButton: controlPanel.querySelector("[data-slot-panel-cancel]"),
       settingsButton: controlPanel.querySelector("[data-slot-panel-settings]"),
       expandButton: controlPanel.querySelector("[data-slot-panel-expand]"),
+      expandButtonAmount: controlPanel.querySelector("[data-slot-panel-expand-amount]"),
     };
 
     controlPanelRefs.collapseButton.addEventListener("click", () => {
@@ -318,6 +323,8 @@
     if (!state || !state.stealth_mode_enabled) {
       return "Slots";
     }
+    const pendingValue =
+      state && state.pending_stack_value != null ? state.pending_stack_value : 0;
     const everyN = Math.max(
       1,
       Number.parseInt(
@@ -339,13 +346,14 @@
         ) || 0,
       ),
     );
-    const pendingValue =
-      state && state.pending_stack_value != null ? state.pending_stack_value : 0;
     const pendingNumber = moneyNumber(pendingValue);
     const pendingText =
       pendingNumber < 0
         ? `-${Math.abs(pendingNumber).toFixed(2)}$`
         : `${Math.abs(pendingNumber).toFixed(2)}$`;
+    if (everyN <= 1) {
+      return "Slots";
+    }
     return `Slots ${currentCount}/${everyN} ${pendingText}`;
   }
 
@@ -355,6 +363,42 @@
       return;
     }
     controlPanelRefs.expandButton.textContent = triggerProgressLabel(state || {});
+  }
+
+  function showControlPanelAmount(text, tone) {
+    ensureControlPanel();
+    if (!controlPanelRefs || !controlPanelRefs.expandButtonAmount) {
+      return;
+    }
+    const amount = controlPanelRefs.expandButtonAmount;
+    amount.textContent = text;
+    amount.className = `anki-slot-machine-control-pill-amount is-visible is-${tone}`;
+    if (controlPanelAmountTimeout) {
+      window.clearTimeout(controlPanelAmountTimeout);
+      controlPanelAmountTimeout = null;
+    }
+    controlPanelAmountTimeout = window.setTimeout(() => {
+      amount.className = "anki-slot-machine-control-pill-amount";
+      amount.textContent = "";
+      controlPanelAmountTimeout = null;
+    }, 900);
+  }
+
+  function maybeShowStealthCostAmount(state) {
+    if (!state || !state.stealth_mode_enabled || !controlPanelCollapsed) {
+      return;
+    }
+    const result = state.last_result;
+    if (!result || !result.event_id || result.event_id === lastControlPanelAmountEventId) {
+      return;
+    }
+    const rollCostNumber = moneyNumber(result.roll_cost != null ? result.roll_cost : 0);
+    const didSpin = Boolean(result.did_spin);
+    if (rollCostNumber <= 0 || didSpin) {
+      return;
+    }
+    lastControlPanelAmountEventId = result.event_id;
+    showControlPanelAmount(signedMoney(-rollCostNumber), "loss");
   }
 
   function updateMachineTitle(view, label) {
@@ -1019,10 +1063,39 @@
     if (result.bet != null && moneyNumber(result.bet) === 0) {
       return true;
     }
-    if (!result.did_spin) {
-      return true;
+    return !result.did_spin;
+  }
+
+  function displayedSpinRollCost(result) {
+    if (!result) {
+      return 0;
     }
-    return result.base_reward != null && moneyNumber(result.base_reward) === 0;
+    if (result.did_spin && result.pending_roll_cost != null) {
+      return moneyNumber(result.pending_roll_cost);
+    }
+    return moneyNumber(result.roll_cost != null ? result.roll_cost : 0);
+  }
+
+  function displayedSpinNet(result) {
+    if (!result) {
+      return 0;
+    }
+    const payoutValue = result.payout != null ? result.payout : 0;
+    if (result.did_spin && result.pending_roll_cost != null) {
+      return payoutValue - displayedSpinRollCost(result);
+    }
+    return result.net_change != null ? result.net_change : payoutValue - displayedSpinRollCost(result);
+  }
+
+  function displayedSpinAmount(result) {
+    if (!result) {
+      return 0;
+    }
+    const payoutValue = moneyNumber(result.payout != null ? result.payout : 0);
+    if (payoutValue > 0) {
+      return payoutValue;
+    }
+    return displayedSpinNet(result);
   }
 
   function syncNoSpinStatus(view, result) {
@@ -1030,6 +1103,17 @@
       const payoutNumber = moneyNumber(result && result.payout != null ? result.payout : 0);
       const stackValue = result && result.stack_value != null ? result.stack_value : 0;
       const stackNumber = moneyNumber(stackValue);
+      const rollCostNumber = moneyNumber(result && result.roll_cost != null ? result.roll_cost : 0);
+      if (rollCostNumber !== 0) {
+        const label = rollCostNumber > 0 ? "Cost" : "Credit";
+        const tone = rollCostNumber > 0 ? "loss" : "win";
+        showStatus(
+          view,
+          `${label} ${signedMoney(-rollCostNumber, { showPositive: true })} · Stack ${unsignedMoney(stackValue)}`,
+          tone,
+        );
+        return;
+      }
       if (payoutNumber > 0 || payoutNumber < 0) {
         const tone = payoutNumber > 0 ? "win" : "loss";
         const verb = payoutNumber > 0 ? "paid" : "lost";
@@ -1044,6 +1128,39 @@
       return;
     }
     clearStatus(view);
+  }
+
+  function syncSpinStatus(view, result) {
+    if (!result || !result.did_spin) {
+      clearStatus(view);
+      return;
+    }
+    const rollCostNumber = displayedSpinRollCost(result);
+    if (rollCostNumber === 0) {
+      clearStatus(view);
+      return;
+    }
+    const payoutValue = result.payout != null ? result.payout : 0;
+    const roundNetValue = displayedSpinNet(result);
+    const roundNetNumber = moneyNumber(roundNetValue);
+    const tone = roundNetNumber > 0 ? "win" : roundNetNumber < 0 ? "loss" : "neutral";
+    const roundCostLabel = rollCostNumber > 0 ? "Roll Cost" : "Roll Credit";
+    const roundCostText = `Result ${unsignedMoney(payoutValue)} · ${roundCostLabel} ${unsignedMoney(rollCostNumber)}`;
+    showStatus(
+      view,
+      `${roundCostText}\nNet ${signedMoney(roundNetValue, { showPositive: true })}`,
+      tone,
+    );
+  }
+
+  function isRollCostOnlyLoss(result) {
+    if (!result) {
+      return false;
+    }
+    const rollCostNumber = moneyNumber(result.roll_cost != null ? result.roll_cost : 0);
+    const payoutNumber = moneyNumber(result.payout != null ? result.payout : 0);
+    const didSpin = Boolean(result.did_spin);
+    return !didSpin && rollCostNumber > 0 && payoutNumber === 0;
   }
 
   function burstParticles(view, tone) {
@@ -1176,7 +1293,12 @@
     if (!result || !result.event_id) return;
 
     const payoutValue = result.payout != null ? result.payout : 0;
-    const netChangeValue = result.net_change != null ? result.net_change : payoutValue;
+    const netChangeValue =
+      !isNoSpinLikeResult(result) && result.did_spin
+        ? displayedSpinNet(result)
+        : result.net_change != null
+          ? result.net_change
+          : payoutValue;
     const netChangeNumber = moneyNumber(netChangeValue);
     const tone = netChangeNumber > 0 ? "win" : netChangeNumber < 0 ? "loss" : "neutral";
     if (result.event_id === view.lastAnimatedEventId) {
@@ -1199,7 +1321,11 @@
           } else if (result.line_hit && netChangeNumber > 0) {
             burstParticles(view, "win");
           }
-          showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
+          syncSpinStatus(view, result);
+          const amountValue = displayedSpinAmount(result);
+          const amountTone =
+            amountValue > 0 ? "win" : amountValue < 0 ? "loss" : "neutral";
+          showAmount(view, signedMoney(amountValue, { showPositive: true }), amountTone);
         },
       });
       return;
@@ -1213,18 +1339,21 @@
         clearAmount(view);
         return;
       }
-      if (netChangeNumber < 0) {
+      if (netChangeNumber < 0 && !isRollCostOnlyLoss(result)) {
         flashLoss(view);
         burstParticles(view, "loss");
       }
-      showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
+      showAmount(view, signedMoney(netChangeValue, { showPositive: true }), tone);
       return;
     }
     if (netChangeNumber < 0) {
       flashLoss(view);
       burstParticles(view, "loss");
     }
-    showAmount(view, signedMoney(payoutValue, { showPositive: true }), tone);
+    syncSpinStatus(view, result);
+    const amountValue = displayedSpinAmount(result);
+    const amountTone = amountValue > 0 ? "win" : amountValue < 0 ? "loss" : "neutral";
+    showAmount(view, signedMoney(amountValue, { showPositive: true }), amountTone);
   }
 
   function machineResultFor(roundResult, machineKey) {
@@ -1278,15 +1407,22 @@
     delete machineViews[machineKey];
   }
 
-  function shouldHideMachine(state, machineResult) {
+  function shouldHideMachine(view, state, machineResult) {
     if (!state || !state.stealth_mode_enabled) {
+      return false;
+    }
+    if (
+      view &&
+      view.revealUntilCardId != null &&
+      String(view.revealUntilCardId) === String(state.card_id != null ? state.card_id : "")
+    ) {
       return false;
     }
     return !(machineResult && machineResult.did_spin);
   }
 
   function syncMachineVisibility(view, state, machineResult) {
-    const hidden = shouldHideMachine(state, machineResult);
+    const hidden = shouldHideMachine(view, state, machineResult);
     if (hidden && view.activeSpin) {
       stopSpinAnimation(view);
     }
@@ -1299,6 +1435,7 @@
 
     ensureControlPanel();
     syncControlPanelProgress(state);
+    maybeShowStealthCostAmount(state);
 
     const machines = Array.isArray(state.machines)
       ? state.machines
@@ -1323,6 +1460,13 @@
       const machine = machines[index];
       const key = String(machine.key || "main");
       const view = ensureView(machine);
+      if (
+        state.stealth_mode_enabled &&
+        view.revealUntilCardId == null &&
+        !view.hasHydratedResult
+      ) {
+        view.revealUntilCardId = state.card_id != null ? state.card_id : "";
+      }
 
       updateMachineTitle(view, machine.label);
 

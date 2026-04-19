@@ -25,6 +25,8 @@ It **does** make you want to press "Good" just one more time.
 
 - 🎰 Real slot-machine style spin that feels tied to the result
 - 🎞️ Faster reel animation with a clean slowdown at the end
+- 🎰 Multiple independent slot windows can spin at once
+- ⚙️ Quick settings for rewards, roll cost, and spin cadence
 - 💸 Persistent fake-money balance across review sessions
 - 📈 Live terminal-style stats window with a PnL chart, tape feed, and quant sidebar
 - 📊 Odds and rewards page inside Anki
@@ -67,8 +69,11 @@ That’s it. That’s the product.
 - **Triple** → profile triple multiplier  
   → the machine acknowledges your existence
 
-- **Stacked mode** → every review adds its configured value to one shared stack, and every `spin_trigger_every_n` reviews that stack either spins or pays directly  
+- **Stacked mode** → every review adds its configured answer value to one shared stack, and every `spin_trigger_every_n` reviews that stack settles into a spin  
   → delayed chaos
+
+- **Roll cost** → charges on every review before the spin math happens, so the payout and the final net can tell different stories  
+  → the spin can pay even when the full cycle still feels rough
 
 ---
 
@@ -84,14 +89,15 @@ Like life. But compressed into 300ms.
 
 ## 🧮 How it works (for nerds)
 
-- The add-on loads one slot profile JSON file
-- That file defines reel faces, pair multipliers, and triple multipliers
+- The add-on loads one shared slot profile JSON file
+- Every visible machine uses that same profile
+- All machines share one bankroll, one streak, and one stats feed
 - Reel probabilities come directly from the configured face counts
-- The backend builds a real reel strip from those faces and keeps reel position state
+- The backend builds a real reel strip from those faces and keeps reel positions per machine
 - Visible reel symbols are derived from real backend stop positions
 - The reel strip is mixed into a stable order so the visible 3x3 window feels less clumpy without changing the configured probabilities
-- Pairs and triples are evaluated from the real backend reel result
-- The odds page computes the real distribution from that profile
+- Pairs and triples are evaluated from a real 3-reel backend result
+- The odds page computes both per-machine odds and aggregate expected payout
 
 Important:
 
@@ -102,6 +108,7 @@ It just runs the profile you give it.
 
 ## Short Changelog
 
+- `v0.0.11` Roll cost controls, deterministic stacked spins, and clearer payout-versus-net feedback.
 - `v0.0.10` Shared stacked settlements, Stealth Mode auto-hide/show behavior, and a Stealth-only collapsed `Slots` progress label.
 - `v0.0.9` Settings dialog, cleaner controls, and reviewer polish.
 - `v0.0.8` Configurable rewards, cleaner odds, and lag fixes.
@@ -123,9 +130,9 @@ Main config lives in `src/anki_slot_machine/config.json`.
 {
   "starting_balance": 100,
   "decimal_places": 2,
+  "roll_cost": 1.0,
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
-  "spin_trigger_chance": 1.0,
   "stealth_mode_enabled": false,
   "answer_base_values": {
     "again": 0.0,
@@ -133,7 +140,13 @@ Main config lives in `src/anki_slot_machine/config.json`.
     "good": 1.0,
     "easy": 1.5
   },
-  "slot_profile_path": "slot_profiles/base.json"
+  "slot_profile_path": "slot_profiles/base.json",
+  "machines": [
+    {
+      "key": "main",
+      "label": "Slot 1"
+    }
+  ]
 }
 ```
 
@@ -172,11 +185,12 @@ Useful intuition:
 - `pair_multipliers` → what an exact pair pays  
 - `triple_multipliers` → what a triple pays  
 - `spin_animation_duration_ms` → total reel animation budget, capped at `750`  
-- `spin_trigger_every_n` → stack `n` reviews, then settle the pot  
-- `spin_trigger_chance` → chance that the spin actually happens at that check  
+- `roll_cost` → charged once per visible machine on each review; it does not change odds or multipliers  
+- `spin_trigger_every_n` → stack `n` reviews, then settle that shared answer stack into a spin  
 - `stealth_mode_enabled` → keep slot windows hidden until a real spin happens, then keep them visible until the next non-spin review; in this mode the collapsed `Slots` button shows stack progress  
 - `answer_base_values` → signed per-answer base values, configurable in JSON  
 - `slot_profile_path` → which profile file the add-on loads  
+- `machines` → which machine windows appear on screen  
 
 More detail is documented in `src/anki_slot_machine/config.md`.
 
@@ -207,9 +221,10 @@ Tools → Slot Machine → Show Odds and Rewards
 
 Includes:
 
+- aggregate expected payout across all active machines  
 - real probabilities  
 - actual multipliers  
-- expected payout per spin  
+- expected payout per machine spin  
 
 The add-on menu also includes:
 
@@ -226,7 +241,8 @@ Yes, it survives restarts.
 No, you cannot cash it out.  
 
 Runtime state is stored separately from Anki card data, so the add-on does not
-modify scheduling, note fields, or card content.
+modify scheduling, note fields, or card content. All machines share the same
+saved bankroll and stats history.
 
 ---
 

@@ -31,6 +31,7 @@ def make_config(*, profile_overrides=None, **config_overrides):
     raw = {
         "starting_balance": 100,
         "decimal_places": 2,
+        "roll_cost": 0,
     }
     raw.update(config_overrides)
     profile = build_profile(**(profile_overrides or {}))

@@ -24,8 +24,8 @@ ANSWER_KEYS = ("again", "hard", "good", "easy")
 def build_settings_config(
     raw_config: dict | None,
     *,
+    roll_cost: float,
     answer_base_values: dict[str, float],
-    spin_trigger_chance: float,
     spin_trigger_every_n: int,
     stealth_mode_enabled: bool,
 ) -> dict:
@@ -40,7 +40,8 @@ def build_settings_config(
             merged[key] = float(answer_base_values[key])
 
     source["answer_base_values"] = merged
-    source["spin_trigger_chance"] = float(spin_trigger_chance)
+    source["roll_cost"] = float(roll_cost)
+    source.pop("spin_trigger_chance", None)
     source["spin_trigger_every_n"] = int(spin_trigger_every_n)
     source["stealth_mode_enabled"] = bool(stealth_mode_enabled)
     return source
@@ -51,7 +52,7 @@ class SlotMachineSettingsDialog(QDialog):
         super().__init__(parent or mw)
 
         self.setWindowTitle("Slot Machine Settings")
-        self.resize(480, 460)
+        self.resize(480, 520)
 
         self.setStyleSheet(
             """
@@ -94,6 +95,26 @@ class SlotMachineSettingsDialog(QDialog):
         intro.setWordWrap(True)
         root.addWidget(intro)
 
+        root.addWidget(QLabel("<b>Roll Cost</b>"))
+
+        cost_help = QLabel(
+            "Applied once per machine on each review.\n"
+            "It does not change slot odds or multipliers.\n"
+            "Negative values credit money instead of charging it."
+        )
+        cost_help.setWordWrap(True)
+        root.addWidget(cost_help)
+
+        self.roll_cost_input = self._build_answer_input(
+            self._config.roll_cost, answer_decimals
+        )
+        root.addWidget(
+            self._field(
+                self.roll_cost_input,
+                "Per-machine cost or credit charged on each answered card.",
+            )
+        )
+
         root.addWidget(QLabel("<b>Answer Rewards</b>"))
 
         help_rewards = QLabel(
@@ -132,27 +153,13 @@ class SlotMachineSettingsDialog(QDialog):
         root.addWidget(QLabel("<b>Spin Trigger</b>"))
 
         trigger_help = QLabel(
-            "Controls how often reviews settle the shared stack and check for a spin."
+            "Controls how often reviews settle the shared stack and trigger a spin."
         )
         trigger_help.setWordWrap(True)
         root.addWidget(trigger_help)
 
         trigger_form = QFormLayout()
         trigger_form.setSpacing(12)
-
-        self.spin_trigger_chance_input = QDoubleSpinBox(self)
-        self.spin_trigger_chance_input.setDecimals(3)
-        self.spin_trigger_chance_input.setRange(0.0, 1.0)
-        self.spin_trigger_chance_input.setSingleStep(0.05)
-        self.spin_trigger_chance_input.setValue(self._config.spin_trigger_chance)
-
-        trigger_form.addRow(
-            "Chance",
-            self._field(
-                self.spin_trigger_chance_input,
-                "Probability (0.0–1.0) that a spin happens.",
-            ),
-        )
 
         self.spin_trigger_every_n_input = QSpinBox(self)
         self.spin_trigger_every_n_input.setRange(1, 999)
@@ -184,7 +191,7 @@ class SlotMachineSettingsDialog(QDialog):
 
         root.addLayout(trigger_form)
 
-        footer = QLabel("Tip: chance=1.0 and every N=1 → always spins.")
+        footer = QLabel("Tip: every N=1 → every review spins immediately.")
         footer.setWordWrap(True)
         root.addWidget(footer)
 
@@ -231,13 +238,13 @@ class SlotMachineSettingsDialog(QDialog):
 
         updated = build_settings_config(
             self._raw_config,
+            roll_cost=self.roll_cost_input.value(),
             answer_base_values={
                 "again": self.again_input.value(),
                 "hard": self.hard_input.value(),
                 "good": self.good_input.value(),
                 "easy": self.easy_input.value(),
             },
-            spin_trigger_chance=self.spin_trigger_chance_input.value(),
             spin_trigger_every_n=self.spin_trigger_every_n_input.value(),
             stealth_mode_enabled=self.stealth_mode_enabled_input.isChecked(),
         )

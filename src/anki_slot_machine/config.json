@@ -1,9 +1,9 @@
 {
   "starting_balance": 100,
   "decimal_places": 2,
+  "roll_cost": 1.0,
   "spin_animation_duration_ms": 500,
   "spin_trigger_every_n": 1,
-  "spin_trigger_chance": 1.0,
   "stealth_mode_enabled": false,
   "answer_base_values": {
     "again": 0.0,
