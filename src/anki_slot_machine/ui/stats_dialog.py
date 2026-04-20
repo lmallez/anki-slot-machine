@@ -22,7 +22,6 @@ from aqt.qt import (
 
 from ..service import get_service
 
-
 SYMBOL_EMOJIS = {
     "SLOT_1": "🐟",
     "SLOT_2": "🍖",
@@ -579,8 +578,7 @@ class SlotMachineStatsDialog(QDialog):
         self.resize(1080, 860)
         self._last_event_id: str | None = None
         self._plain_text_signatures: dict[str, object] = {}
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QDialog {
                 background: #121212;
                 color: #f2f2ed;
@@ -597,15 +595,13 @@ class SlotMachineStatsDialog(QDialog):
             QPushButton:hover {
                 background: #242424;
             }
-            """
-        )
+            """)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
         self.signal_bar = QFrame(self)
-        self.signal_bar.setStyleSheet(
-            """
+        self.signal_bar.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -615,8 +611,7 @@ class SlotMachineStatsDialog(QDialog):
                 background: transparent;
                 border: 0;
             }
-            """
-        )
+            """)
         signal_layout = QHBoxLayout(self.signal_bar)
         signal_layout.setContentsMargins(14, 12, 14, 12)
         signal_layout.setSpacing(16)
@@ -640,8 +635,7 @@ class SlotMachineStatsDialog(QDialog):
         left_column.setSpacing(10)
 
         self.chart_frame = QFrame(self)
-        self.chart_frame.setStyleSheet(
-            """
+        self.chart_frame.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -651,8 +645,7 @@ class SlotMachineStatsDialog(QDialog):
                 background: transparent;
                 border: 0;
             }
-            """
-        )
+            """)
         chart_layout = QVBoxLayout(self.chart_frame)
         chart_layout.setContentsMargins(6, 4, 6, 6)
         chart_layout.setSpacing(2)
@@ -665,8 +658,7 @@ class SlotMachineStatsDialog(QDialog):
         left_column.addWidget(self.chart_frame, 3)
 
         self.feed_frame = QFrame(self)
-        self.feed_frame.setStyleSheet(
-            """
+        self.feed_frame.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -685,8 +677,7 @@ class SlotMachineStatsDialog(QDialog):
                 font-size: 15px;
                 selection-background-color: #6f1d1e;
             }
-            """
-        )
+            """)
         feed_layout = QVBoxLayout(self.feed_frame)
         feed_layout.setContentsMargins(12, 10, 12, 12)
         feed_layout.setSpacing(6)
@@ -699,8 +690,7 @@ class SlotMachineStatsDialog(QDialog):
         left_column.addWidget(self.feed_frame, 2)
 
         self.quant_frame = QFrame(self)
-        self.quant_frame.setStyleSheet(
-            """
+        self.quant_frame.setStyleSheet("""
             QFrame {
                 background: #0f0f0f;
                 border: 1px solid #2f2315;
@@ -720,8 +710,7 @@ class SlotMachineStatsDialog(QDialog):
                 font-size: 10px;
                 selection-background-color: #6f1d1e;
             }
-            """
-        )
+            """)
         quant_layout = QVBoxLayout(self.quant_frame)
         quant_layout.setContentsMargins(12, 10, 12, 12)
         quant_layout.setSpacing(6)
@@ -761,8 +750,7 @@ class SlotMachineStatsDialog(QDialog):
         super().closeEvent(event)
 
     def _flash_frame(self, frame: QFrame, border: str) -> None:
-        frame.setStyleSheet(
-            f"""
+        frame.setStyleSheet(f"""
             QFrame {{
                 background: #17120f;
                 border: 1px solid {border};
@@ -773,12 +761,10 @@ class SlotMachineStatsDialog(QDialog):
                 border: 0;
                 color: #f2f2ed;
             }}
-            """
-        )
+            """)
 
     def _clear_frame_flash(self) -> None:
-        self.signal_bar.setStyleSheet(
-            """
+        self.signal_bar.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -788,10 +774,8 @@ class SlotMachineStatsDialog(QDialog):
                 background: transparent;
                 border: 0;
             }
-            """
-        )
-        self.chart_frame.setStyleSheet(
-            """
+            """)
+        self.chart_frame.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -801,10 +785,8 @@ class SlotMachineStatsDialog(QDialog):
                 background: transparent;
                 border: 0;
             }
-            """
-        )
-        self.feed_frame.setStyleSheet(
-            """
+            """)
+        self.feed_frame.setStyleSheet("""
             QFrame {
                 background: #101010;
                 border: 1px solid #3a2b16;
@@ -823,8 +805,7 @@ class SlotMachineStatsDialog(QDialog):
                 font-size: 15px;
                 selection-background-color: #6f1d1e;
             }
-            """
-        )
+            """)
 
     def _flash_live_surfaces(self, snapshot: dict) -> None:
         tone = _tone_for_money(

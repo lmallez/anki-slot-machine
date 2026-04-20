@@ -17,7 +17,6 @@ from aqt.qt import (
 from ..config import config_from_raw
 from ..runtime import addon_config, write_addon_config
 
-
 ANSWER_KEYS = ("again", "hard", "good", "easy")
 
 
@@ -54,8 +53,7 @@ class SlotMachineSettingsDialog(QDialog):
         self.setWindowTitle("Slot Machine Settings")
         self.resize(480, 520)
 
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QDialog {
                 background: #151617;
                 color: #f2f2ed;
@@ -79,8 +77,7 @@ class SlotMachineSettingsDialog(QDialog):
                 border: 1px solid #4b4031;
                 border-radius: 6px;
             }
-            """
-        )
+            """)
 
         self._raw_config = addon_config()
         self._config = config_from_raw(self._raw_config)
