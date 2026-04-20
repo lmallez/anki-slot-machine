@@ -320,7 +320,7 @@
   }
 
   function triggerProgressLabel(state) {
-    if (!state || !state.stealth_mode_enabled) {
+    if (!state) {
       return "Slots";
     }
     const pendingValue =
@@ -332,6 +332,9 @@
         10,
       ) || 1,
     );
+    if (everyN <= 1) {
+      return "Slots";
+    }
     const currentCount = Math.max(
       0,
       Math.min(
@@ -351,9 +354,6 @@
       pendingNumber < 0
         ? `-${Math.abs(pendingNumber).toFixed(2)}$`
         : `${Math.abs(pendingNumber).toFixed(2)}$`;
-    if (everyN <= 1) {
-      return "Slots";
-    }
     return `Slots ${currentCount}/${everyN} ${pendingText}`;
   }
 
