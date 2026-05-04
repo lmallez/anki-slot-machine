@@ -105,6 +105,7 @@ It just runs the profile you give it.
 
 ## Short Changelog
 
+- `v0.0.12` Rebalanced the default `base.json`
 - `v0.0.11` Roll cost controls, deterministic stacked spins, and clearer payout-versus-net feedback.
 - `v0.0.10` Shared stacked settlements, Stealth Mode auto-hide/show behavior, and a Stealth-only collapsed `Slots` progress label.
 - `v0.0.9` Settings dialog, cleaner controls, and reviewer polish.

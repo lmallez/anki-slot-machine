@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.12] - 2026-05-04
+
+### Added
+
+- Added `scripts/simulate_rolls.py` to run repeated bankroll simulations from a
+  configurable Anki answer mix without loading the add-on runtime.
+
+### Changed
+
+- Rebalanced the packaged `base` slot profile around a more typical Anki
+  answer flow while keeping the `SLOT_5` jackpot at `x300`.
+- Made `src/anki_slot_machine/slot_profiles/base.json` the single runtime
+  source of truth for the packaged default slot profile instead of duplicating
+  those values in `config.py`.
+
+### Fixed
+
+- Decoupled the gameplay and service test fixtures from the live packaged
+  `base.json`, so changing the default profile no longer forces broad test
+  expectation rewrites.
+
 ## [v0.0.11] - 2026-04-19
 
 ### Added

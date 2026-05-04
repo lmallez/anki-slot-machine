@@ -189,7 +189,7 @@ class ConfigProfileTests(unittest.TestCase):
             ),
         )
 
-    def test_default_profile_targets_typical_anki_mix(self) -> None:
+    def test_default_profile_loads_packaged_profile_metadata(self) -> None:
         config = config_module.config_from_raw(
             {
                 "starting_balance": 100,
@@ -200,9 +200,9 @@ class ConfigProfileTests(unittest.TestCase):
         )
         summary = config.slot_probability_summary
 
-        self.assertEqual(config.slot_triple_multipliers["SLOT_5"], Decimal("300.00"))
-        self.assertEqual(summary.expected_multiplier, Decimal("1.33"))
-        self.assertEqual(summary.expected_good_payout, Decimal("1.33"))
+        self.assertEqual(config.slot_profile_name, config_module.DEFAULT_SLOT_PROFILE["name"])
+        self.assertEqual(summary.profile_name, config_module.DEFAULT_SLOT_PROFILE["name"])
+        self.assertTrue(config.slot_probability_summary.symbol_odds)
 
     def test_all_zero_faces_fall_back_to_default_profile_faces(self) -> None:
         config = load_test_config(
