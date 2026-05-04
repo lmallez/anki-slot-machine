@@ -8,17 +8,17 @@
     "SLOT_5": 8
   },
   "pair_multipliers": {
-    "SLOT_1": 0.75,
-    "SLOT_2": 0.95,
-    "SLOT_3": 1.15,
-    "SLOT_4": 2.20,
-    "SLOT_5": 4.50
+    "SLOT_1": 0.90,
+    "SLOT_2": 1.14,
+    "SLOT_3": 1.38,
+    "SLOT_4": 2.64,
+    "SLOT_5": 5.40
   },
   "triple_multipliers": {
-    "SLOT_1": 2.50,
-    "SLOT_2": 7.00,
-    "SLOT_3": 15.00,
-    "SLOT_4": 60.00,
-    "SLOT_5": 300.00
+    "SLOT_1": 3.00,
+    "SLOT_2": 8.40,
+    "SLOT_3": 18.00,
+    "SLOT_4": 72.00,
+    "SLOT_5": 360.00
   }
 }

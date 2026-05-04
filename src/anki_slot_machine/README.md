@@ -158,17 +158,17 @@ A slot profile looks like this:
     "SLOT_5": 8
   },
   "pair_multipliers": {
-    "SLOT_1": 0.75,
-    "SLOT_2": 0.95,
-    "SLOT_3": 1.15,
-    "SLOT_4": 2.20,
-    "SLOT_5": 4.50
+    "SLOT_1": 1.00,
+    "SLOT_2": 1.25,
+    "SLOT_3": 1.50,
+    "SLOT_4": 3.00,
+    "SLOT_5": 5.30
   },
   "triple_multipliers": {
     "SLOT_1": 2.50,
-    "SLOT_2": 7.00,
-    "SLOT_3": 15.00,
-    "SLOT_4": 60.00,
+    "SLOT_2": 6.60,
+    "SLOT_3": 13.50,
+    "SLOT_4": 53.00,
     "SLOT_5": 300.00
   }
 }
