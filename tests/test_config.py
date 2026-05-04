@@ -8,15 +8,18 @@ from decimal import Decimal
 from pathlib import Path
 
 from test_support import install_stubs
+from test_profile_fixture import TEST_SLOT_PROFILE
 
 install_stubs()
 
 import anki_slot_machine.config as config_module
 from anki_slot_machine.decimal_utils import quantize_decimal
 
+PACKAGE_ROOT = Path(config_module.__file__).resolve().parent
+
 
 def build_profile(**overrides) -> dict:
-    profile = copy.deepcopy(config_module.DEFAULT_SLOT_PROFILE)
+    profile = copy.deepcopy(TEST_SLOT_PROFILE)
     for key, value in overrides.items():
         if isinstance(value, dict) and isinstance(profile.get(key), dict):
             profile[key] = {**profile[key], **value}
@@ -40,6 +43,14 @@ def load_test_config(*, profile_overrides=None, **config_overrides):
 
 
 class ConfigProfileTests(unittest.TestCase):
+    def test_default_slot_profile_is_loaded_from_base_json(self) -> None:
+        expected = json.loads(
+            (PACKAGE_ROOT / config_module.DEFAULT_SLOT_PROFILE_PATH).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(config_module.DEFAULT_SLOT_PROFILE, expected)
+
     def test_answer_base_values_load_as_signed_decimals(self) -> None:
         config = load_test_config(
             answer_base_values={
@@ -177,6 +188,21 @@ class ConfigProfileTests(unittest.TestCase):
                 config.decimal_places,
             ),
         )
+
+    def test_default_profile_targets_typical_anki_mix(self) -> None:
+        config = config_module.config_from_raw(
+            {
+                "starting_balance": 100,
+                "decimal_places": 2,
+                "slot_profile_path": config_module.DEFAULT_SLOT_PROFILE_PATH,
+            },
+            base_dir=PACKAGE_ROOT,
+        )
+        summary = config.slot_probability_summary
+
+        self.assertEqual(config.slot_triple_multipliers["SLOT_5"], Decimal("300.00"))
+        self.assertEqual(summary.expected_multiplier, Decimal("1.33"))
+        self.assertEqual(summary.expected_good_payout, Decimal("1.33"))
 
     def test_all_zero_faces_fall_back_to_default_profile_faces(self) -> None:
         config = load_test_config(

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from test_support import install_stubs
+from test_profile_fixture import TEST_SLOT_PROFILE
 
 install_stubs()
 
@@ -26,7 +27,7 @@ from anki_slot_machine.state import (
 
 
 def build_profile(**overrides) -> dict:
-    profile = copy.deepcopy(config_module.DEFAULT_SLOT_PROFILE)
+    profile = copy.deepcopy(TEST_SLOT_PROFILE)
     for key, value in overrides.items():
         if isinstance(value, dict) and isinstance(profile.get(key), dict):
             profile[key] = {**profile[key], **value}
