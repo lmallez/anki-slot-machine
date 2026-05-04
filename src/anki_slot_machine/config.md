@@ -109,7 +109,7 @@ but the configured face counts and resulting probabilities stay the same.
   `stacked_value x multiplier`.
 - Any answer with a configured value of `0` still counts toward the threshold,
   but contributes `0` to the stack.
-- Negative outcomes are clamped so the shared balance never goes below zero.
+- Negative outcomes can push the shared balance below zero.
 - A no-match spin uses `x0`.
 - An exact pair uses the profile pair multiplier for that symbol.
 - A triple uses the profile triple multiplier for that symbol.

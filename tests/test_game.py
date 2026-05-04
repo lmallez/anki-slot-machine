@@ -308,7 +308,7 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(result.net_change, result.payout)
         self.assertEqual(result.balance_after, Decimal("100.00") + result.payout)
 
-    def test_spin_result_for_again_cannot_take_balance_below_zero(self) -> None:
+    def test_spin_result_for_again_can_take_balance_below_zero(self) -> None:
         config = make_config(answer_base_values={"again": -1})
         strip = game_module.build_reel_strip(config)
         reel_positions = (
@@ -329,9 +329,9 @@ class RewardTests(unittest.TestCase):
                 balance_before=Decimal("1.50"),
                 rng=random.Random(2),
             )
-        self.assertEqual(result.payout, Decimal("-1.50"))
-        self.assertEqual(result.net_change, Decimal("-1.50"))
-        self.assertEqual(result.balance_after, Decimal("0.00"))
+        self.assertEqual(result.payout, Decimal("-60.00"))
+        self.assertEqual(result.net_change, Decimal("-60.00"))
+        self.assertEqual(result.balance_after, Decimal("-58.50"))
 
     def test_spin_result_for_again_with_zero_base_does_not_spin(self) -> None:
         config = make_config(answer_base_values={"again": 0})

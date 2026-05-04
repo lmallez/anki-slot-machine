@@ -459,22 +459,13 @@ def _signed_amount(amount: Decimal, decimal_places: int) -> str:
     return f"${value}"
 
 
-def _clamp_negative_change(change: Decimal, *, balance_before: Decimal) -> Decimal:
-    if change >= ZERO:
-        return change
-    return max(-balance_before, change)
-
-
 def _effective_roll_cost(
     configured_roll_cost: Decimal,
     *,
     balance_before: Decimal,
     decimal_places: int,
 ) -> Decimal:
-    roll_cost = quantize_decimal(configured_roll_cost, decimal_places)
-    if roll_cost <= ZERO:
-        return roll_cost
-    return quantize_decimal(min(balance_before, roll_cost), decimal_places)
+    return quantize_decimal(configured_roll_cost, decimal_places)
 
 
 def _configured_base_value(
@@ -556,10 +547,7 @@ def build_spin_result_explicit(
     else:
         raw_change = base_reward if payout_on_no_spin else ZERO
 
-    payout = quantize_decimal(
-        _clamp_negative_change(raw_change, balance_before=balance_after_cost),
-        config.decimal_places,
-    )
+    payout = quantize_decimal(raw_change, config.decimal_places)
     slot_bonus = (
         quantize_decimal(
             payout - base_reward,

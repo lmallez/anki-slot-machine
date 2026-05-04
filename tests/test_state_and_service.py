@@ -427,15 +427,15 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(service.state().pending_stack_value, Decimal("1.00"))
         self.assertEqual(service.state().pending_roll_cost, Decimal("1.00"))
 
-    def test_roll_cost_is_capped_by_remaining_balance(self) -> None:
+    def test_roll_cost_can_overdraw_remaining_balance(self) -> None:
         config = make_config(starting_balance=0.75, roll_cost=1, spin_trigger_every_n=3)
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(config, Path(tmp_dir) / "state.json")
             result = service.apply_review(card_id=1, ease=3, button_count=4)
 
-        self.assertEqual(result.roll_cost, Decimal("0.75"))
-        self.assertEqual(result.net_change, Decimal("-0.75"))
-        self.assertEqual(result.balance_after, Decimal("0.00"))
+        self.assertEqual(result.roll_cost, Decimal("1.00"))
+        self.assertEqual(result.net_change, Decimal("-1.00"))
+        self.assertEqual(result.balance_after, Decimal("-0.25"))
         self.assertEqual(result.stack_value, Decimal("1.00"))
 
     def test_multi_machine_roll_cost_is_charged_per_machine_before_spin(self) -> None:
@@ -966,7 +966,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["history"][0]["machine_results"][0]["machine_key"], "alpha")
         self.assertEqual(snapshot["history"][0]["machine_results"][1]["machine_key"], "beta")
 
-    def test_multi_machine_again_cannot_overdraw_shared_bankroll(self) -> None:
+    def test_multi_machine_again_can_overdraw_shared_bankroll(self) -> None:
         config = make_multi_machine_config(
             starting_balance=2,
             answer_base_values={"again": -1},
@@ -983,11 +983,11 @@ class ServiceTests(unittest.TestCase):
                 result = service.apply_review(card_id=5, ease=1, button_count=4)
             snapshot = service.stats_snapshot()
 
-        self.assertEqual(result.payout, Decimal("-2.00"))
-        self.assertEqual(result.balance_after, Decimal("0.00"))
-        self.assertEqual(result.machine_results[0]["payout"], "-2.00")
-        self.assertEqual(result.machine_results[1]["payout"], "0.00")
-        self.assertEqual(snapshot["balance"], "0.00")
+        self.assertEqual(result.payout, Decimal("-120.00"))
+        self.assertEqual(result.balance_after, Decimal("-118.00"))
+        self.assertEqual(result.machine_results[0]["payout"], "-60.00")
+        self.assertEqual(result.machine_results[1]["payout"], "-60.00")
+        self.assertEqual(snapshot["balance"], "-118.00")
 
     def test_undo_last_review_restores_previous_slot_state(self) -> None:
         config = make_config(spin_trigger_every_n=3)
@@ -1117,8 +1117,8 @@ class ServiceTests(unittest.TestCase):
             snapshot = service.snapshot()
 
         self.assertEqual(result.base_reward, Decimal("-1.00"))
-        self.assertEqual(result.balance_after, Decimal("0.00"))
-        self.assertEqual(snapshot["balance"], "0.00")
+        self.assertEqual(result.balance_after, Decimal("-298.00"))
+        self.assertEqual(snapshot["balance"], "-298.00")
 
 
 if __name__ == "__main__":
